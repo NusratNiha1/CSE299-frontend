@@ -32,7 +32,7 @@ export default function DashboardScreen() {
   // Demo data for UI preview
   const demoNotifications = [
     { id: 'n1', title: 'Cry detected', subtitle: 'Bedroom • 10:42 AM', type: 'cry' as const, read: false },
-    { id: 'n2', title: 'Motion detected', subtitle: 'Nursery • 9:15 AM', type: 'motion' as const, read: false },
+ 
     { id: 'n3', title: 'Device connected', subtitle: 'Camera A • 8:51 AM', type: 'device' as const, read: true },
     { id: 'n4', title: 'Low battery', subtitle: 'Camera B • 8:20 AM', type: 'battery' as const, read: true },
     { id: 'n5', title: 'Noise spike', subtitle: 'Bedroom • 7:55 AM', type: 'noise' as const, read: true },
@@ -40,13 +40,13 @@ export default function DashboardScreen() {
 
   const demoStats = [
     { key: 'cries', label: 'Cries Today', value: 2 },
-    { key: 'motions', label: 'Motions', value: 5 },
+   
     { key: 'active', label: 'Active Time', value: '2h 14m' },
   ];
 
   const demoAlerts = [
     { id: 'a1', severity: 'high' as const, message: 'Prolonged crying detected', time: '10:42 AM' },
-    { id: 'a2', severity: 'medium' as const, message: 'Motion detected in Nursery', time: '9:15 AM' },
+    
     { id: 'a3', severity: 'low' as const, message: 'Device A reconnected', time: '8:51 AM' },
   ];
 

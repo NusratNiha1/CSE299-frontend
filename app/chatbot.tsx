@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { theme } from '@/constants/theme';
 import { GlassCard } from '@/components/GlassCard';
 import { askGroq, ChatMessage } from '@/lib/groq';
@@ -244,9 +245,11 @@ export default function ChatbotScreen() {
             <View style={styles.headerRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <MessageSquare size={18} color={theme.colors.primary} />
-                <Text style={[styles.title, { marginLeft: 8 }]} numberOfLines={1}>
-                  {sessions.find(s => s.id === activeId)?.title || 'Childcare Chatbot'}
-                </Text>
+                <TouchableOpacity onPress={() => setHistoryOpen(true)} accessibilityLabel="Open chat history">
+                  <Text style={[styles.title, { marginLeft: 8 }]} numberOfLines={1}>
+                    {sessions.find(s => s.id === activeId)?.title || 'Childcare Chatbot'}
+                  </Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.headerActions}>
                 <TouchableOpacity onPress={newChat} style={styles.iconBtn} accessibilityLabel="New chat">
@@ -293,44 +296,53 @@ export default function ChatbotScreen() {
         </View>
       </View>
 
-      {/* History Modal */}
-      <Modal visible={historyOpen} animationType="slide" transparent onRequestClose={() => setHistoryOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Chats</Text>
-            <FlatList
-              data={sessions}
-              keyExtractor={(s) => s.id}
-              renderItem={({ item }) => (
-                <View style={[styles.chatRow, activeId === item.id && styles.chatRowActive]}>
-                  <TouchableOpacity style={{ flex: 1 }} onPress={() => openChat(item.id)}>
-                    <Text style={styles.chatTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.chatSubtitle}>{new Date(item.updatedAt).toLocaleString()}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => requestRename(item.id)} style={styles.rowIcon}>
-                    <Edit3 size={18} color={theme.colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteChat(item.id)} style={styles.rowIcon}>
-                    <Trash2 size={18} color={theme.colors.error} />
-                  </TouchableOpacity>
-                </View>
-              )}
-              ItemSeparatorComponent={() => <View style={styles.rowDivider} />}
-              ListFooterComponent={() => (
-                <View style={{ marginTop: theme.spacing.lg }}>
-                  <TouchableOpacity onPress={newChat} style={styles.primaryBtn}>
-                    <Text style={styles.primaryBtnText}>New chat</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={deleteAll} style={[styles.secondaryBtn, { marginTop: theme.spacing.sm }]}>
-                    <Text style={styles.secondaryBtnText}>Clear all</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              contentContainerStyle={{ paddingBottom: 20 }}
-            />
-            <TouchableOpacity onPress={() => setHistoryOpen(false)} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>Close</Text>
-            </TouchableOpacity>
+      {/* History Modal - glassmorphic floating card */}
+      <Modal visible={historyOpen} animationType="fade" transparent onRequestClose={() => setHistoryOpen(false)}>
+        <View style={styles.glassBackdrop}>
+          <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={styles.backdropTint} />
+          <View style={styles.glassCenter}>
+            <GlassCard style={styles.glassCard} contentClassName="p-0">
+              <View style={{ padding: theme.spacing.lg }}>
+                <Text style={styles.modalTitle}>Chats</Text>
+              </View>
+              <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}>
+                <FlatList
+                  data={sessions}
+                  keyExtractor={(s) => s.id}
+                  renderItem={({ item }) => (
+                    <View style={[styles.chatRow, activeId === item.id && styles.chatRowActive]}>
+                      <TouchableOpacity style={{ flex: 1 }} onPress={() => openChat(item.id)}>
+                        <Text style={styles.chatTitle} numberOfLines={1}>{item.title}</Text>
+                        <Text style={styles.chatSubtitle}>{new Date(item.updatedAt).toLocaleString()}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => requestRename(item.id)} style={styles.rowIcon}>
+                        <Edit3 size={18} color={theme.colors.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => deleteChat(item.id)} style={styles.rowIcon}>
+                        <Trash2 size={18} color={theme.colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  ItemSeparatorComponent={() => <View style={styles.rowDivider} />}
+                  ListFooterComponent={() => (
+                    <View style={{ marginTop: theme.spacing.lg }}>
+                      <TouchableOpacity onPress={newChat} style={styles.primaryBtn}>
+                        <Text style={styles.primaryBtnText}>New chat</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={deleteAll} style={[styles.secondaryBtn, { marginTop: theme.spacing.sm }]}>
+                        <Text style={styles.secondaryBtnText}>Clear all</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  contentContainerStyle={{ paddingBottom: 8 }}
+                  style={{ maxHeight: 360 }}
+                />
+                <TouchableOpacity onPress={() => setHistoryOpen(false)} style={[styles.closeBtn, { alignSelf: 'center' }]}>
+                  <Text style={styles.closeBtnText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </GlassCard>
           </View>
         </View>
       </Modal>
@@ -414,8 +426,10 @@ const styles = StyleSheet.create({
   },
   sendText: { color: theme.colors.text, fontWeight: theme.fontWeight.bold as any },
   // Modals
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: theme.colors.secondary, padding: theme.spacing.lg, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '75%' },
+  glassBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  backdropTint: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)' },
+  glassCenter: { width: '92%' },
+  glassCard: { borderRadius: 20, overflow: 'hidden', maxHeight: '75%' },
   modalTitle: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold as any, marginBottom: theme.spacing.md },
   chatRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: theme.spacing.sm },
   chatRowActive: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, paddingHorizontal: 6 },
