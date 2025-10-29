@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '@/constants/theme';
@@ -35,6 +35,7 @@ export default function ChatbotScreen() {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const controllerRef = useRef<AbortController | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -92,6 +93,25 @@ export default function ChatbotScreen() {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages]);
+
+  // Move floating input with keyboard
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: any) => {
+      const height = e?.endCoordinates?.height ?? 0;
+      setKeyboardOffset(height);
+    };
+    const onHide = () => setKeyboardOffset(0);
+
+    const subShow = Keyboard.addListener(showEvent as any, onShow);
+    const subHide = Keyboard.addListener(hideEvent as any, onHide);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
   // Load sessions on mount
   useEffect(() => {
@@ -246,11 +266,11 @@ export default function ChatbotScreen() {
           data={messages}
           keyExtractor={(m) => m.id}
           renderItem={renderItem}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]} // add bottom space for floating input
+          contentContainerStyle={[styles.listContent, { paddingBottom: 110 + keyboardOffset }]} // add bottom space for floating input and keyboard
         />
 
         {/* Floating Capsule Input */}
-        <View style={[styles.floatingInput, { bottom: insets.bottom + 10 }]}>
+        <View style={[styles.floatingInput, { bottom: insets.bottom + 10 + keyboardOffset }]}>
           <GlassCard style={styles.inputCard} contentClassName="p-0">
             <View style={styles.inputRow}>
               <TextInput
