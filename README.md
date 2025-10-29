@@ -73,24 +73,11 @@ This downloads all libraries the app needs.
 From that same PowerShell window, run your env file once, then start Expo:
 
 ```powershell
-# Load your secrets for this session
-./env.ps1
-
 # Start the Expo development server
-npx expo start
+npx expo start -c
 ```
 
-What you can do now:
 
-- Press “w” to open the app in your web browser
-- Or open the Expo Go app on your phone and scan the QR code shown in your terminal/browser
-  - Make sure your phone and PC are on the same Wi‑Fi network
-
-Tip: If something looks stuck, try clearing the cache:
-
-```powershell
-npx expo start --clear
-```
 
 ---
 
@@ -153,11 +140,6 @@ npx expo start --clear
 
 ---
 
-## Safety note
 
-The chatbot offers supportive guidance but isn’t a medical professional. For medical concerns or emergencies, contact a pediatrician or local emergency services.
 
----
-
-Happy building! If you get stuck, share a screenshot of your terminal and we’ll help you get unblocked quickly.
 
