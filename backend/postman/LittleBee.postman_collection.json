@@ -1,0 +1,72 @@
+{
+  "info": {
+    "name": "LittleBee API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Passw0rd!\",\n  \"name\": \"Demo User\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json && json.token) { pm.environment.set('token', json.token); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+          
+        }
+      ]
+    },
+    {
+      "name": "Devices",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+        "url": { "raw": "{{baseUrl}}/devices", "host": ["{{baseUrl}}"], "path": ["devices"] }
+      }
+    },
+    {
+      "name": "Monitoring Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"deviceId\": \"REPLACE_WITH_DEVICE_ID\",\n  \"metrics\": { \"temp\": 23.5 },\n  \"status\": \"ok\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/monitoring", "host": ["{{baseUrl}}"], "path": ["monitoring"] }
+      }
+    }
+  ]
+}
