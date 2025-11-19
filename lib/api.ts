@@ -3,7 +3,7 @@
 
 // Avoid Node type dependency in Expo TypeScript by declaring a minimal process shape
 declare const process: { env?: Record<string, string | undefined> };
-const BASE_URL = (process?.env?.EXPO_PUBLIC_API_URL as string) || 'http://localhost:4000';
+const BASE_URL = (process?.env?.EXPO_PUBLIC_API_URL as string) || 'http://192.168.0.232:4000';
 
 interface ApiOptions {
   method?: string;
