@@ -37,7 +37,7 @@ export default function DashboardScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.name}>{profile?.full_name || 'User'}</Text>
+            <Text style={styles.name}>{profile?.name || 'User'}</Text>
           </View>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <LogOut size={24} color={theme.colors.error} />
@@ -67,56 +67,56 @@ export default function DashboardScreen() {
         </GlassCard>
 
         <View style={styles.actionsGrid}>
-          <Animated.View style={{ opacity: a1, transform: [{ translateY: a1.interpolate({ inputRange: [0,1], outputRange: [12,0] }) }] }}>
-          <TouchableOpacity
-            onPress={() => router.push('/monitoring')}
-            style={styles.actionCardWrapper}
-          >
-            <GlassCard style={styles.actionCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
-              <View style={styles.actionIcon} className={ui.actionIcon + ' bg-[rgba(1,204,102,0.1)]'}>
-                <Video size={32} color={theme.colors.primary} />
-              </View>
-              <Text style={styles.actionTitle} className="text-text text-md font-bold">Monitoring</Text>
-              <Text style={styles.actionSubtitle} className={ui.subtle + ' text-xs'}>View live feed</Text>
-            </GlassCard>
-          </TouchableOpacity>
+          <Animated.View style={{ opacity: a1, transform: [{ translateY: a1.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            <TouchableOpacity
+              onPress={() => router.push('/monitoring')}
+              style={styles.actionCardWrapper}
+            >
+              <GlassCard style={styles.actionCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
+                <View style={styles.actionIcon} className={ui.actionIcon + ' bg-[rgba(1,204,102,0.1)]'}>
+                  <Video size={32} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.actionTitle} className="text-text text-md font-bold">Monitoring</Text>
+                <Text style={styles.actionSubtitle} className={ui.subtle + ' text-xs'}>View live feed</Text>
+              </GlassCard>
+            </TouchableOpacity>
           </Animated.View>
 
-          <Animated.View style={{ opacity: a2, transform: [{ translateY: a2.interpolate({ inputRange: [0,1], outputRange: [12,0] }) }] }}>
-          <TouchableOpacity
-            onPress={() => router.push('/notifications')}
-            style={styles.actionCardWrapper}
-          >
-            <GlassCard style={styles.actionCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
-              <View style={styles.actionIcon} className={ui.actionIcon + ' bg-[rgba(1,204,102,0.1)]'}>
-                <Bell size={32} color={theme.colors.primary} />
-                {unreadCount > 0 && (
-                  <View style={styles.notificationBadge} className={ui.notifBadge + ' min-w-[20px] h-[20px] px-[6px]'}>
-                    <Text style={styles.badgeText} className="text-[10px] text-text font-bold">{unreadCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.actionTitle} className="text-text text-md font-bold">Notifications</Text>
-              <Text style={styles.actionSubtitle} className={ui.subtle + ' text-xs'}>
-                {unreadCount > 0 ? `${unreadCount} new` : 'View history'}
-              </Text>
-            </GlassCard>
-          </TouchableOpacity>
+          <Animated.View style={{ opacity: a2, transform: [{ translateY: a2.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            <TouchableOpacity
+              onPress={() => router.push('/notifications')}
+              style={styles.actionCardWrapper}
+            >
+              <GlassCard style={styles.actionCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
+                <View style={styles.actionIcon} className={ui.actionIcon + ' bg-[rgba(1,204,102,0.1)]'}>
+                  <Bell size={32} color={theme.colors.primary} />
+                  {unreadCount > 0 && (
+                    <View style={styles.notificationBadge} className={ui.notifBadge + ' min-w-[20px] h-[20px] px-[6px]'}>
+                      <Text style={styles.badgeText} className="text-[10px] text-text font-bold">{unreadCount}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.actionTitle} className="text-text text-md font-bold">Notifications</Text>
+                <Text style={styles.actionSubtitle} className={ui.subtle + ' text-xs'}>
+                  {unreadCount > 0 ? `${unreadCount} new` : 'View history'}
+                </Text>
+              </GlassCard>
+            </TouchableOpacity>
           </Animated.View>
 
-          <Animated.View style={{ opacity: a3, transform: [{ translateY: a3.interpolate({ inputRange: [0,1], outputRange: [12,0] }) }] }}>
-          <TouchableOpacity
-            onPress={() => router.push('/settings')}
-            style={styles.actionCardWrapper}
-          >
-            <GlassCard style={styles.actionCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
-              <View style={styles.actionIcon} className={ui.actionIcon + ' bg-[rgba(1,204,102,0.1)]'}>
-                <SettingsIcon size={32} color={theme.colors.primary} />
-              </View>
-              <Text style={styles.actionTitle} className="text-text text-md font-bold">Settings</Text>
-              <Text style={styles.actionSubtitle} className={ui.subtle + ' text-xs'}>Manage account</Text>
-            </GlassCard>
-          </TouchableOpacity>
+          <Animated.View style={{ opacity: a3, transform: [{ translateY: a3.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            <TouchableOpacity
+              onPress={() => router.push('/settings')}
+              style={styles.actionCardWrapper}
+            >
+              <GlassCard style={styles.actionCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
+                <View style={styles.actionIcon} className={ui.actionIcon + ' bg-[rgba(1,204,102,0.1)]'}>
+                  <SettingsIcon size={32} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.actionTitle} className="text-text text-md font-bold">Settings</Text>
+                <Text style={styles.actionSubtitle} className={ui.subtle + ' text-xs'}>Manage account</Text>
+              </GlassCard>
+            </TouchableOpacity>
           </Animated.View>
         </View>
       </ScrollView>

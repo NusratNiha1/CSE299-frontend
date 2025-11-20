@@ -11,7 +11,8 @@ router.post('/register', async (req, res, next) => {
     const { email, password, name } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
     const user = await createUser({ email, password, name: name || email.split('@')[0] });
-    res.status(201).json({ user });
+    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    res.status(201).json({ token, user });
   } catch (err) {
     next(err);
   }
