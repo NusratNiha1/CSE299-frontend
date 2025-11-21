@@ -46,8 +46,7 @@ export default function RegisterScreen() {
     setError('');
 
     try {
-  // Backend currently only stores name; username is ignored until implemented
-  await signUp(email, password, fullName || username || email.split('@')[0]);
+      await signUp(email, password, username, fullName);
       router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');

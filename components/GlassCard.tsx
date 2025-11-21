@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, ViewStyle, Animated, Easing, StyleProp } from 'react-native';
+import { View, StyleSheet, ViewStyle, Animated, Easing, StyleProp, ImageBackground, ImageSourcePropType } from 'react-native';
 import { theme } from '@/constants/theme';
 
 interface GlassCardProps {
@@ -7,9 +7,13 @@ interface GlassCardProps {
   style?: StyleProp<ViewStyle>;
   className?: string;
   contentClassName?: string;
+  /** Optional background image for the entire card (behind content). */
+  backgroundImage?: string | ImageSourcePropType;
+  /** Optional overlay color above the background image. Set to 'transparent' or undefined to disable. */
+  overlayColor?: string;
 }
 
-export function GlassCard({ children, style, className, contentClassName }: GlassCardProps) {
+export function GlassCard({ children, style, className, contentClassName, backgroundImage, overlayColor }: GlassCardProps) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translate = useRef(new Animated.Value(6)).current;
   useEffect(() => {
@@ -19,31 +23,60 @@ export function GlassCard({ children, style, className, contentClassName }: Glas
     ]).start();
   }, [opacity, translate]);
 
+  const bgSource: ImageSourcePropType | undefined =
+    typeof backgroundImage === 'string' ? { uri: backgroundImage } : backgroundImage;
+
   return (
     <Animated.View style={[styles.container, style, { opacity, transform: [{ translateY: translate }] }]}>
-      <View className={className as any}>
-        <View style={styles.content} className={contentClassName as any}>
-          {children}
+      {bgSource ? (
+        <ImageBackground
+          source={bgSource}
+          style={styles.bgImage}
+          imageStyle={styles.bgImageRadius}
+          resizeMode="cover"
+        >
+          {/* Optional tint for readability */}
+          {overlayColor !== 'transparent' && overlayColor !== undefined && (
+            <View pointerEvents="none" style={[styles.bgOverlay, { backgroundColor: overlayColor }]} />
+          )}
+          <View className={className as any}>
+            <View style={styles.content} className={contentClassName as any}>
+              {children}
+            </View>
+          </View>
+        </ImageBackground>
+      ) : (
+        <View className={className as any}>
+          <View style={styles.content} className={contentClassName as any}>
+            {children}
+          </View>
         </View>
-      </View>
+      )}
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.glassBorder,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    backgroundColor: theme.colors.background,
+    
+  },
+  bgImage: {
+    width: '100%',
+  },
+  bgImageRadius: {
+    borderRadius: theme.borderRadius.md,
+  },
+  bgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6, 28, 18, 0.35)', // default dark green translucent tint
   },
   content: {
     padding: theme.spacing.md,
-    backgroundColor: 'transparent',
+    borderRadius: theme.borderRadius.md,
   },
 });

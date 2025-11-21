@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
@@ -16,12 +15,13 @@ import { theme } from '@/constants/theme';
 export default function SplashScreen() {
   const router = useRouter();
   const { session, loading } = useAuth();
-  const scale = useSharedValue(0);
+
   const opacity = useSharedValue(0);
+  const translateY = useSharedValue(20); // slide in slightly from below
 
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 3 });
-    opacity.value = withTiming(1, { duration: 800, easing: Easing.ease });
+    opacity.value = withTiming(1, { duration: 1000, easing: Easing.out(Easing.cubic) });
+    translateY.value = withTiming(0, { duration: 1000, easing: Easing.out(Easing.cubic) });
 
     const timer = setTimeout(() => {
       if (!loading) {
@@ -34,16 +34,20 @@ export default function SplashScreen() {
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [loading, session, router, scale, opacity]);
+  }, [loading, session, router]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
     opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
   }));
 
   return (
     <LinearGradient
-      colors={[theme.colors.background, theme.colors.secondary, theme.colors.background]}
+      colors={[
+        theme.colors.background,
+        theme.colors.secondary,
+        theme.colors.background,
+      ]}
       style={styles.container}
     >
       <Animated.View style={[styles.logoContainer, animatedStyle]}>

@@ -1,131 +1,108 @@
-/*
-  # Child Monitoring System Database Schema
+-- ============================================================
+-- 1️⃣ CREATE PROFILES TABLE
+-- ============================================================
 
-  ## Overview
-  Complete database schema for the Child Monitoring System, supporting user authentication,
-  device management, cry detection events, and notification settings.
-
-  ## Tables Created
-  
-  ### 1. profiles
-  - Extends Supabase auth.users with additional user profile data
-  - Fields: id (uuid), username (text), full_name (text), avatar_url (text), created_at, updated_at
-  
-  ### 2. devices
-  - Stores monitoring device information
-  - Fields: id (uuid), user_id (uuid FK), device_name (text), device_code (text), 
-    is_active (boolean), last_connected_at (timestamptz), created_at, updated_at
-  
-  ### 3. cry_events
-  - Logs all detected cry events from monitoring devices
-  - Fields: id (uuid), device_id (uuid FK), detected_at (timestamptz), 
-    confidence_level (numeric), audio_url (text), duration_seconds (integer), notes (text)
-  
-  ### 4. alert_settings
-  - User-specific notification and alert preferences
-  - Fields: id (uuid), user_id (uuid FK), push_enabled (boolean), sound_enabled (boolean),
-    vibration_enabled (boolean), quiet_hours_start (time), quiet_hours_end (time), updated_at
-  
-  ### 5. notifications
-  - Notification history for users
-  - Fields: id (uuid), user_id (uuid FK), cry_event_id (uuid FK), title (text), 
-    message (text), is_read (boolean), sent_at (timestamptz)
-
-  ## Security
-  - Row Level Security (RLS) enabled on all tables
-  - Policies ensure users can only access their own data
-  - Device data restricted to device owners
-  - Cry events accessible only through owned devices
-  - Notification data restricted to recipients
-
-  ## Indexes
-  - Optimized queries for user_id lookups
-  - Device code lookups for pairing
-  - Cry event timestamp ordering
-  - Notification read status filtering
-*/
-
--- Create profiles table
+-- Create a 'profiles' table that stores user profile information.
+-- Each profile is linked to a user from the 'auth.users' table.
 CREATE TABLE IF NOT EXISTS profiles (
-  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username text UNIQUE,
-  full_name text,
-  avatar_url text,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,  -- Same ID as the user; if user is deleted, profile also deleted
+  username text UNIQUE,                                             -- Unique username for each user
+  full_name text,                                                   -- User’s full name
+  avatar_url text,                                                  -- Profile picture URL
+  created_at timestamptz DEFAULT now(),                             -- Timestamp when profile was created
+  updated_at timestamptz DEFAULT now()                              -- Timestamp for last update
 );
 
+-- Enable Row Level Security to restrict data access to each user
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
+-- Allow authenticated users to view only their own profile
 CREATE POLICY "Users can view own profile"
   ON profiles FOR SELECT
   TO authenticated
   USING (auth.uid() = id);
 
+-- Allow authenticated users to update only their own profile
 CREATE POLICY "Users can update own profile"
   ON profiles FOR UPDATE
   TO authenticated
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
+-- Allow authenticated users to insert only their own profile
 CREATE POLICY "Users can insert own profile"
   ON profiles FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = id);
 
--- Create devices table
+-- ============================================================
+-- 2️⃣ CREATE DEVICES TABLE
+-- ============================================================
+
+-- Table to store connected baby monitor devices for each user
 CREATE TABLE IF NOT EXISTS devices (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  device_name text NOT NULL DEFAULT 'Baby Monitor',
-  device_code text UNIQUE NOT NULL,
-  is_active boolean DEFAULT true,
-  last_connected_at timestamptz DEFAULT now(),
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),                    -- Unique device ID
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, -- Linked to the user who owns the device
+  device_name text NOT NULL DEFAULT 'Baby Monitor',                 -- Default device name
+  device_code text UNIQUE NOT NULL,                                 -- Unique device pairing code
+  is_active boolean DEFAULT true,                                   -- Whether the device is active
+  last_connected_at timestamptz DEFAULT now(),                      -- Last connection time
+  created_at timestamptz DEFAULT now(),                             -- Creation time
+  updated_at timestamptz DEFAULT now()                              -- Last update time
 );
 
+-- Enable Row Level Security for device ownership protection
 ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
 
+-- Allow each user to view only their own devices
 CREATE POLICY "Users can view own devices"
   ON devices FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
+-- Allow users to insert devices linked to their account
 CREATE POLICY "Users can insert own devices"
   ON devices FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+-- Allow users to update only their own devices
 CREATE POLICY "Users can update own devices"
   ON devices FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- Allow users to delete only their own devices
 CREATE POLICY "Users can delete own devices"
   ON devices FOR DELETE
   TO authenticated
   USING (auth.uid() = user_id);
 
--- Create index for device lookups
+-- Create indexes to improve query speed by user or device code
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_device_code ON devices(device_code);
 
--- Create cry_events table
+-- ============================================================
+-- 3️⃣ CREATE CRY_EVENTS TABLE
+-- ============================================================
+
+-- Table for storing cry detection events recorded by devices
 CREATE TABLE IF NOT EXISTS cry_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_id uuid NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-  detected_at timestamptz DEFAULT now(),
-  confidence_level numeric(3,2) DEFAULT 0.95 CHECK (confidence_level >= 0 AND confidence_level <= 1),
-  audio_url text,
-  duration_seconds integer DEFAULT 0,
-  notes text,
-  created_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),                     -- Unique cry event ID
+  device_id uuid NOT NULL REFERENCES devices(id) ON DELETE CASCADE,  -- Linked to the device where event was detected
+  detected_at timestamptz DEFAULT now(),                             -- When the cry was detected
+  confidence_level numeric(3,2) DEFAULT 0.95 CHECK (confidence_level >= 0 AND confidence_level <= 1), -- AI model confidence
+  audio_url text,                                                    -- Link to recorded audio (if available)
+  duration_seconds integer DEFAULT 0,                                -- Duration of the detected cry
+  notes text,                                                        -- Optional notes or metadata
+  created_at timestamptz DEFAULT now()                               -- When the event was saved
 );
 
+-- Enable Row Level Security to protect event data
 ALTER TABLE cry_events ENABLE ROW LEVEL SECURITY;
 
+-- Allow users to view only cry events from their own devices
 CREATE POLICY "Users can view cry events from own devices"
   ON cry_events FOR SELECT
   TO authenticated
@@ -137,6 +114,8 @@ CREATE POLICY "Users can view cry events from own devices"
     )
   );
 
+-- Allow the system (authenticated user) to insert cry events
+-- only if the device belongs to them
 CREATE POLICY "System can insert cry events"
   ON cry_events FOR INSERT
   TO authenticated
@@ -148,96 +127,118 @@ CREATE POLICY "System can insert cry events"
     )
   );
 
--- Create index for cry event queries
+-- Create indexes to optimize queries by device or time
 CREATE INDEX IF NOT EXISTS idx_cry_events_device_id ON cry_events(device_id);
 CREATE INDEX IF NOT EXISTS idx_cry_events_detected_at ON cry_events(detected_at DESC);
 
--- Create alert_settings table
+-- ============================================================
+-- 4️⃣ CREATE ALERT_SETTINGS TABLE
+-- ============================================================
+
+-- Stores each user's notification preferences and quiet hours
 CREATE TABLE IF NOT EXISTS alert_settings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  push_enabled boolean DEFAULT true,
-  sound_enabled boolean DEFAULT true,
-  vibration_enabled boolean DEFAULT true,
-  quiet_hours_start time,
-  quiet_hours_end time,
-  updated_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),                     -- Unique ID
+  user_id uuid UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, -- Each user has one alert setting
+  push_enabled boolean DEFAULT true,                                 -- Enable push notifications
+  sound_enabled boolean DEFAULT true,                                -- Enable sound alerts
+  vibration_enabled boolean DEFAULT true,                            -- Enable vibration alerts
+  quiet_hours_start time,                                            -- Optional start time for quiet hours
+  quiet_hours_end time,                                              -- Optional end time for quiet hours
+  updated_at timestamptz DEFAULT now()                               -- Last updated time
 );
 
+-- Enable Row Level Security for user privacy
 ALTER TABLE alert_settings ENABLE ROW LEVEL SECURITY;
 
+-- Allow users to view only their own settings
 CREATE POLICY "Users can view own alert settings"
   ON alert_settings FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
+-- Allow users to insert their own alert settings
 CREATE POLICY "Users can insert own alert settings"
   ON alert_settings FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+-- Allow users to update only their own settings
 CREATE POLICY "Users can update own alert settings"
   ON alert_settings FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- Create notifications table
+-- ============================================================
+-- 5️⃣ CREATE NOTIFICATIONS TABLE
+-- ============================================================
+
+-- Table to store notifications sent to users (e.g. cry alerts)
 CREATE TABLE IF NOT EXISTS notifications (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  cry_event_id uuid REFERENCES cry_events(id) ON DELETE SET NULL,
-  title text NOT NULL,
-  message text NOT NULL,
-  is_read boolean DEFAULT false,
-  sent_at timestamptz DEFAULT now()
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),                     -- Unique notification ID
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, -- User receiving the notification
+  cry_event_id uuid REFERENCES cry_events(id) ON DELETE SET NULL,    -- Linked cry event (optional)
+  title text NOT NULL,                                               -- Notification title
+  message text NOT NULL,                                             -- Notification message body
+  is_read boolean DEFAULT false,                                     -- Read/unread status
+  sent_at timestamptz DEFAULT now()                                  -- Time notification was sent
 );
 
+-- Enable Row Level Security for notification privacy
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+-- Allow users to view only their own notifications
 CREATE POLICY "Users can view own notifications"
   ON notifications FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
+-- Allow users to mark their own notifications as read
 CREATE POLICY "Users can update own notifications"
   ON notifications FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- Allow system to insert notifications for the user
 CREATE POLICY "System can insert notifications"
   ON notifications FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
--- Create indexes for notification queries
+-- Create indexes for faster notification filtering
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON notifications(sent_at DESC);
 
--- Create function to auto-update updated_at timestamp
+-- ============================================================
+-- 6️⃣ TRIGGERS & FUNCTIONS FOR AUTO-UPDATING TIMESTAMPS
+-- ============================================================
+
+-- Function to automatically update the 'updated_at' column
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = now();
+  NEW.updated_at = now();  -- Update timestamp on every update
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Add triggers for updated_at columns
+-- Add trigger to auto-update 'updated_at' for profiles
 DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+-- Add trigger to auto-update 'updated_at' for devices
 DROP TRIGGER IF EXISTS update_devices_updated_at ON devices;
 CREATE TRIGGER update_devices_updated_at
   BEFORE UPDATE ON devices
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+-- Add trigger to auto-update 'updated_at' for alert settings
 DROP TRIGGER IF EXISTS update_alert_settings_updated_at ON alert_settings;
 CREATE TRIGGER update_alert_settings_updated_at
   BEFORE UPDATE ON alert_settings

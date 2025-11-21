@@ -16,7 +16,7 @@ export default function TabLayout() {
           borderTopColor: theme.colors.glassBorder,
           borderTopWidth: 1,
           height: 70,
-          paddingBottom: 10,
+          paddingBottom: 30,
           paddingTop: 10,
         },
         tabBarActiveTintColor: theme.colors.primary,

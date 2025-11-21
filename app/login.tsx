@@ -19,13 +19,13 @@ import { ui } from '@/constants/ui';
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
+    if (!emailOrUsername.trim() || !password.trim()) {
       setError('Please fill in all fields');
       return;
     }
@@ -34,7 +34,7 @@ export default function LoginScreen() {
     setError('');
 
     try {
-  await signIn(email, password);
+      await signIn(emailOrUsername, password);
       router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
@@ -63,10 +63,10 @@ export default function LoginScreen() {
 
           <View style={styles.form}>
             <Input
-              label="Email"
-              placeholder="Enter your email"
-              value={email}
-              onChangeText={setEmail}
+              label="Email or Username"
+              placeholder="Enter your email or username"
+              value={emailOrUsername}
+              onChangeText={setEmailOrUsername}
               autoCapitalize="none"
               keyboardType="email-address"
               className="mb-md"

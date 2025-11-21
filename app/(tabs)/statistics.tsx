@@ -89,14 +89,6 @@ export default function StatisticsScreen() {
             style={styles.chart}
           />
         </GlassCard>
-
-        <GlassCard style={styles.noteCard} className={ui.cardContainer} contentClassName={ui.cardContent}>
-          <Text style={styles.noteTitle} className="text-text text-md font-bold mb-[4px]">Sleep time</Text>
-          <Text style={styles.noteText} className="text-textSecondary">
-            Sleep tracking isn’t enabled yet because we don’t log sleep sessions. Once sleep events are
-            available, this page will chart daily sleep totals alongside crying.
-          </Text>
-        </GlassCard>
       </ScrollView>
     </LinearGradient>
   );
