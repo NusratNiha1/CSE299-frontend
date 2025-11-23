@@ -26,9 +26,48 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return 'Invalid email format';
+
+    const domain = email.split('@')[1]?.toLowerCase();
+    const disposableDomains = [
+      'tempmail.com', '10minutemail.com', 'guerrillamail.com', 'mailinator.com',
+      'yopmail.com', 'throwawaymail.com', 'getairmail.com'
+    ];
+
+    if (domain && disposableDomains.includes(domain)) {
+      return 'Disposable email addresses are not allowed. Please use a valid email provider.';
+    }
+    return null;
+  };
+
+  const validatePassword = (password: string) => {
+    // Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!strongPasswordRegex.test(password)) {
+      return 'Password must be at least 8 characters long and include 1 uppercase, 1 lowercase, 1 number, and 1 special character (@$!%*?&)';
+    }
+    return null;
+  };
+
   const handleRegister = async () => {
+    setError('');
+
     if (!email.trim() || !username.trim() || !fullName.trim() || !password.trim()) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -37,13 +76,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-
     setLoading(true);
-    setError('');
 
     try {
       await signUp(email, password, username, fullName);
