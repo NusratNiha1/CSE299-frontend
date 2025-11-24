@@ -48,6 +48,7 @@ interface MonitoringContextType {
   alertSettings: AlertSettings | null;
   isMonitoring: boolean;
   unreadCount: number;
+  canAccessData: boolean;
   addDevice: (deviceCode: string, deviceName: string) => Promise<void>;
   removeDevice: (deviceId: string) => Promise<void>;
   updateDevice: (deviceId: string, updates: Partial<Device>) => Promise<void>;
@@ -62,7 +63,7 @@ interface MonitoringContextType {
 const MonitoringContext = createContext<MonitoringContextType | undefined>(undefined);
 
 export function MonitoringProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isEmailVerified } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [cryEvents, setCryEvents] = useState<CryEvent[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -70,9 +71,10 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [isMonitoring, setIsMonitoring] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
+  const canAccessData = !!user && isEmailVerified;
 
   const fetchDevices = async () => {
-    if (!user) return;
+    if (!user || !isEmailVerified) return;
 
     const { data, error } = await supabase
       .from('devices')
@@ -90,7 +92,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const fetchCryEvents = async (limit: number = 50) => {
-    if (!user || devices.length === 0) return;
+    if (!user || !isEmailVerified || devices.length === 0) return;
 
     const deviceIds = devices.map(d => d.id);
     const { data, error } = await supabase
@@ -109,7 +111,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const fetchNotifications = async () => {
-    if (!user) return;
+    if (!user || !isEmailVerified) return;
 
     const { data, error } = await supabase
       .from('notifications')
@@ -127,7 +129,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const fetchAlertSettings = async () => {
-    if (!user) return;
+    if (!user || !isEmailVerified) return;
 
     const { data, error } = await supabase
       .from('alert_settings')
@@ -144,7 +146,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   useEffect(() => {
-    if (user) {
+    if (user && isEmailVerified) {
       fetchDevices();
       fetchNotifications();
       fetchAlertSettings();
@@ -152,13 +154,14 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   }, [user]);
 
   useEffect(() => {
-    if (devices.length > 0) {
+    if (devices.length > 0 && isEmailVerified) {
       fetchCryEvents();
     }
   }, [devices]);
 
   const addDevice = async (deviceCode: string, deviceName: string) => {
     if (!user) throw new Error('No user logged in');
+    if (!isEmailVerified) throw new Error('Please verify your email before adding a device');
 
     const { error } = await supabase.from('devices').insert({
       user_id: user.id,
@@ -171,6 +174,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const removeDevice = async (deviceId: string) => {
+    if (!isEmailVerified) throw new Error('Please verify your email before removing a device');
     const { error } = await supabase
       .from('devices')
       .delete()
@@ -181,6 +185,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const updateDevice = async (deviceId: string, updates: Partial<Device>) => {
+    if (!isEmailVerified) throw new Error('Please verify your email before updating a device');
     const { error } = await supabase
       .from('devices')
       .update(updates)
@@ -191,6 +196,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const markNotificationRead = async (notificationId: string) => {
+    if (!isEmailVerified) throw new Error('Please verify your email to manage notifications');
     const { error } = await supabase
       .from('notifications')
       .update({ is_read: true })
@@ -201,7 +207,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   };
 
   const markAllNotificationsRead = async () => {
-    if (!user) return;
+    if (!user || !isEmailVerified) return;
 
     const { error } = await supabase
       .from('notifications')
@@ -215,6 +221,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
   const updateAlertSettings = async (settings: Partial<AlertSettings>) => {
     if (!user) throw new Error('No user logged in');
+    if (!isEmailVerified) throw new Error('Please verify your email before updating alert settings');
 
     const { error } = await supabase
       .from('alert_settings')
@@ -232,6 +239,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     alertSettings,
     isMonitoring,
     unreadCount,
+    canAccessData,
     addDevice,
     removeDevice,
     updateDevice,

@@ -15,6 +15,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  isEmailVerified: boolean;
   signIn: (emailOrUsername: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -50,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setIsEmailVerified(!!session?.user?.email_confirmed_at);
       if (session?.user) {
         fetchProfile(session.user.id);
       }
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setIsEmailVerified(!!session?.user?.email_confirmed_at);
       if (session?.user) {
         fetchProfile(session.user.id);
       } else {
@@ -87,12 +91,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) throw error;
+
+    if (data.session?.user) {
+      setIsEmailVerified(!!data.session.user.email_confirmed_at);
+    }
   };
 
   const signUp = async (email: string, password: string, username: string, fullName: string) => {
@@ -117,6 +125,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (settingsError) throw settingsError;
+
+      // Ensure the newly registered user is treated as logged in
+      setUser(data.user);
+      setIsEmailVerified(!!data.user.email_confirmed_at);
+      await fetchProfile(data.user.id);
+      // Supabase automatically sends a verification email if email confirmation is enabled
     }
   };
 
@@ -154,6 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     profile,
     loading,
+    isEmailVerified,
     signIn,
     signUp,
     signOut,

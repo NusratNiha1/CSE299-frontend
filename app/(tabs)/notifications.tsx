@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,18 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, CheckCheck } from 'lucide-react-native';
 import { useMonitoring } from '@/contexts/MonitoringContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 // import { ButtonPrimary } from '@/components/ButtonPrimary';
 import { theme } from '@/constants/theme';
 import { ui } from '@/constants/ui';
+import { NotificationPopup } from '@/components/NotificationPopup';
 
 export default function NotificationsScreen() {
-  const { notifications, markNotificationRead, markAllNotificationsRead, unreadCount } =
+  const { notifications, markNotificationRead, markAllNotificationsRead, unreadCount, canAccessData } =
     useMonitoring();
+  const { isEmailVerified } = useAuth();
+  const [showVerifyToast, setShowVerifyToast] = useState(false);
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -78,6 +82,13 @@ export default function NotificationsScreen() {
       colors={[theme.colors.background, theme.colors.secondary]}
       style={styles.container}
     >
+      <NotificationPopup
+        title="Email verification required"
+        message="Please verify your email to view notifications. Check your inbox for the verification link."
+        visible={showVerifyToast}
+        onDismiss={() => setShowVerifyToast(false)}
+        type="warning"
+      />
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Notifications</Text>
@@ -97,7 +108,17 @@ export default function NotificationsScreen() {
         )}
       </View>
 
-      {notifications.length === 0 ? (
+      {!isEmailVerified || !canAccessData ? (
+        <View style={styles.emptyContainer}>
+          <GlassCard style={styles.emptyCard} className={ui.cardContainer} contentClassName={ui.cardContent + ' items-center py-xxl'}>
+            <Bell size={48} color={theme.colors.textSecondary} />
+            <Text style={styles.emptyTitle} className="text-text text-lg font-bold mt-lg mb-sm">Email Not Verified</Text>
+            <Text style={styles.emptyText} className="text-textSecondary text-md text-center">
+              Please verify your email address to start receiving and viewing notifications.
+            </Text>
+          </GlassCard>
+        </View>
+      ) : notifications.length === 0 ? (
         <View style={styles.emptyContainer}>
           <GlassCard style={styles.emptyCard} className={ui.cardContainer} contentClassName={ui.cardContent + ' items-center py-xxl'}>
             <Bell size={48} color={theme.colors.textSecondary} />

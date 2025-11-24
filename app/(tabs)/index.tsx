@@ -12,7 +12,7 @@ import { ui } from '@/constants/ui';
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, isEmailVerified, user } = useAuth();
   const { devices, isMonitoring, unreadCount } = useMonitoring();
 
   const handleLogout = async () => {
@@ -66,6 +66,16 @@ export default function DashboardScreen() {
             <LogOut size={22} color={theme.colors.error} />
           </TouchableOpacity>
         </View>
+
+        {!isEmailVerified && user?.email && (
+          <View style={styles.verifyBanner}>
+            <Text style={styles.verifyTitle}>Verify your account</Text>
+            <Text style={styles.verifyText}>
+              We sent a verification link to {user.email}. Please verify your email to unlock
+              notifications and device features.
+            </Text>
+          </View>
+        )}
 
         {/* Hero Glass + Image BG with Frosted Panel */}
         <GlassCard
@@ -246,6 +256,24 @@ const styles = StyleSheet.create({
   },
   greeting: {
     marginTop: 4,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+  },
+  verifyBanner: {
+    marginBottom: theme.spacing.lg,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: 'rgba(255, 193, 7, 0.08)',
+    borderWidth: 1,
+    borderColor: theme.colors.warning,
+  },
+  verifyTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.warning,
+    marginBottom: theme.spacing.xs,
+  },
+  verifyText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
   },

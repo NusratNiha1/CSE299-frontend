@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/Input';
 import { ButtonPrimary } from '@/components/ButtonPrimary';
 import { theme } from '@/constants/theme';
+import { NotificationPopup } from '@/components/NotificationPopup';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -25,6 +26,8 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showVerifyToast, setShowVerifyToast] = useState(false);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,16 +46,17 @@ export default function RegisterScreen() {
   };
 
   const validatePassword = (password: string) => {
-    // Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
-    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    // Min 8 chars, 1 uppercase, 1 lowercase, 1 number
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$/;
     if (!strongPasswordRegex.test(password)) {
-      return 'Password must be at least 8 characters long and include 1 uppercase, 1 lowercase, 1 number, and 1 special character (@$!%*?&)';
+      return 'Password must be at least 8 characters long and include 1 uppercase, 1 lowercase, 1 number';
     }
     return null;
   };
 
   const handleRegister = async () => {
     setError('');
+    setPasswordError('');
 
     if (!email.trim() || !username.trim() || !fullName.trim() || !password.trim()) {
       setError('Please fill in all fields');
@@ -67,7 +71,7 @@ export default function RegisterScreen() {
 
     const passwordError = validatePassword(password);
     if (passwordError) {
-      setError(passwordError);
+      setPasswordError(passwordError);
       return;
     }
 
@@ -80,6 +84,7 @@ export default function RegisterScreen() {
 
     try {
       await signUp(email, password, username, fullName);
+      setShowVerifyToast(true);
       router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
@@ -93,6 +98,13 @@ export default function RegisterScreen() {
       colors={[theme.colors.background, theme.colors.secondary]}
       style={styles.container}
     >
+      <NotificationPopup
+        title="Verify your email"
+        message="We sent a verification link to your email. Please confirm before logging in."
+        visible={showVerifyToast}
+        onDismiss={() => setShowVerifyToast(false)}
+        type="info"
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -136,6 +148,7 @@ export default function RegisterScreen() {
               onChangeText={setPassword}
               isPassword
             />
+            {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
             <Input
               label="Confirm Password"
               placeholder="Re-enter your password"
@@ -217,5 +230,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     textAlign: 'center',
     marginTop: theme.spacing.md,
+  },
+  fieldError: {
+    color: theme.colors.error,
+    fontSize: theme.fontSize.sm,
+    marginTop: theme.spacing.xs,
   },
 });
