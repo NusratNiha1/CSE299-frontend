@@ -10,11 +10,15 @@ import {
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, User as UserIcon } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/Input';
 import { ButtonPrimary } from '@/components/ButtonPrimary';
 import { GlassCard } from '@/components/GlassCard';
 import { theme } from '@/constants/theme';
+
+const CLOUDINARY_UPLOAD_PRESET = 'profile_pics'; // <-- Replace with your actual unsigned preset name
+const CLOUDINARY_CLOUD_NAME = 'dmpotmxs5';
 
 export default function ProfileSettingsScreen() {
   const router = useRouter();
@@ -23,6 +27,8 @@ export default function ProfileSettingsScreen() {
   const [username, setUsername] = useState(profile?.username || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const handleSave = async () => {
     if (!fullName.trim() || !username.trim()) {
@@ -34,13 +40,52 @@ export default function ProfileSettingsScreen() {
     setError('');
 
     try {
-      await updateProfile({ full_name: fullName, username });
+      await updateProfile({ full_name: fullName, username, avatar_url: avatarUrl });
       Alert.alert('Success', 'Profile updated successfully');
       router.back();
     } catch (err: any) {
       setError(err.message || 'Failed to update profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangeAvatar = async () => {
+    setError('');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (result.canceled) return;
+    const image = result.assets?.[0];
+    if (!image?.uri) return;
+    setAvatarUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', {
+        uri: image.uri,
+        type: 'image/jpeg',
+        name: 'profile.jpg',
+      });
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.secure_url) {
+        setAvatarUrl(data.secure_url);
+        await updateProfile({ avatar_url: data.secure_url });
+        Alert.alert('Success', 'Profile picture updated!');
+      } else {
+        setError('Failed to upload image');
+      }
+    } catch (err: any) {
+      setError('Failed to upload image');
+    } finally {
+      setAvatarUploading(false);
     }
   };
 
@@ -60,10 +105,18 @@ export default function ProfileSettingsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
-            <UserIcon size={48} color={theme.colors.primary} />
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={{ width: 100, height: 100, borderRadius: 100 }}
+                resizeMode="cover"
+              />
+            ) : (
+              <UserIcon size={48} color={theme.colors.primary} />
+            )}
           </View>
-          <TouchableOpacity style={styles.changeAvatarButton}>
-            <Text style={styles.changeAvatarText}>Change Photo</Text>
+          <TouchableOpacity style={styles.changeAvatarButton} onPress={handleChangeAvatar} disabled={avatarUploading}>
+            <Text style={styles.changeAvatarText}>{avatarUploading ? 'Uploading...' : 'Change Photo'}</Text>
           </TouchableOpacity>
         </View>
 
