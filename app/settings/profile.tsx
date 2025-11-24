@@ -77,16 +77,16 @@ export default function ProfileSettingsScreen() {
       const ext = image.uri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${profile?.id}-${Date.now()}.${ext}`;
 
-      console.log('Converting image to blob...');
-      // Convert URI to blob
+      console.log('Reading image file...');
+      // For React Native, we need to read the file as ArrayBuffer
       const response = await fetch(image.uri);
-      const blob = await response.blob();
+      const arrayBuffer = await response.arrayBuffer();
 
       console.log('Uploading to Supabase Storage...');
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage using ArrayBuffer
       const { data, error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, blob, {
+        .upload(fileName, arrayBuffer, {
           contentType: `image/${ext}`,
           upsert: true,
         });
