@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,9 +17,7 @@ import { Input } from '@/components/Input';
 import { ButtonPrimary } from '@/components/ButtonPrimary';
 import { GlassCard } from '@/components/GlassCard';
 import { theme } from '@/constants/theme';
-
-const CLOUDINARY_UPLOAD_PRESET = 'profile_pics'; // <-- Replace with your actual unsigned preset name
-const CLOUDINARY_CLOUD_NAME = 'dmpotmxs5';
+import { supabase } from '@/lib/supabase';
 
 export default function ProfileSettingsScreen() {
   const router = useRouter();
@@ -52,38 +51,69 @@ export default function ProfileSettingsScreen() {
 
   const handleChangeAvatar = async () => {
     setError('');
+
+    // Request permissions first
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please grant photo library access to change your profile picture.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
+
     if (result.canceled) return;
     const image = result.assets?.[0];
     if (!image?.uri) return;
+
     setAvatarUploading(true);
+
     try {
-      const formData = new FormData();
-      formData.append('file', {
-        uri: image.uri,
-        type: 'image/jpeg',
-        name: 'profile.jpg',
-      });
-      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.secure_url) {
-        setAvatarUrl(data.secure_url);
-        await updateProfile({ avatar_url: data.secure_url });
-        Alert.alert('Success', 'Profile picture updated!');
-      } else {
-        setError('Failed to upload image');
+      // Get the file extension from the URI
+      const ext = image.uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${profile?.id}-${Date.now()}.${ext}`;
+
+      console.log('Converting image to blob...');
+      // Convert URI to blob
+      const response = await fetch(image.uri);
+      const blob = await response.blob();
+
+      console.log('Uploading to Supabase Storage...');
+      // Upload to Supabase Storage
+      const { data, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, {
+          contentType: `image/${ext}`,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error('Supabase upload error:', uploadError);
+        throw uploadError;
       }
+
+      console.log('Upload successful:', data);
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      console.log('Public URL:', publicUrl);
+
+      // Update profile with new avatar URL
+      setAvatarUrl(publicUrl);
+      await updateProfile({ avatar_url: publicUrl });
+      Alert.alert('Success', 'Profile picture updated!');
     } catch (err: any) {
-      setError('Failed to upload image');
+      console.error('Upload error:', err);
+      const errorMessage = err.message || 'Failed to upload image';
+      setError(errorMessage);
+      Alert.alert('Upload Error', errorMessage);
     } finally {
       setAvatarUploading(false);
     }

@@ -1,82 +1,68 @@
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, ViewStyle, Animated, Easing, StyleProp, ImageBackground, ImageSourcePropType } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { theme } from '@/constants/theme';
 
-interface GlassCardProps {
+interface CardProps {
   children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
+  variant?: 'elevated' | 'filled' | 'outlined';
+  style?: ViewStyle;
+  contentStyle?: ViewStyle;
   className?: string;
   contentClassName?: string;
-  /** Optional background image for the entire card (behind content). */
-  backgroundImage?: string | ImageSourcePropType;
-  /** Optional overlay color above the background image. Set to 'transparent' or undefined to disable. */
-  overlayColor?: string;
 }
 
-export function GlassCard({ children, style, className, contentClassName, backgroundImage, overlayColor }: GlassCardProps) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translate = useRef(new Animated.Value(6)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(translate, { toValue: 0, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-    ]).start();
-  }, [opacity, translate]);
+export function GlassCard({
+  children,
+  variant = 'filled',
+  style,
+  contentStyle,
+  className,
+  contentClassName,
+}: CardProps) {
+  const getCardStyle = () => {
+    const baseStyle = [styles.card];
 
-  const bgSource: ImageSourcePropType | undefined =
-    typeof backgroundImage === 'string' ? { uri: backgroundImage } : backgroundImage;
+    switch (variant) {
+      case 'elevated':
+        return [...baseStyle, styles.elevated, theme.elevation.level1];
+      case 'filled':
+        return [...baseStyle, styles.filled];
+      case 'outlined':
+        return [...baseStyle, styles.outlined];
+      default:
+        return [...baseStyle, styles.filled];
+    }
+  };
 
   return (
-    <Animated.View style={[styles.container, style, { opacity, transform: [{ translateY: translate }] }]}>
-      {bgSource ? (
-        <ImageBackground
-          source={bgSource}
-          style={styles.bgImage}
-          imageStyle={styles.bgImageRadius}
-          resizeMode="cover"
-        >
-          {/* Optional tint for readability */}
-          {overlayColor !== 'transparent' && overlayColor !== undefined && (
-            <View pointerEvents="none" style={[styles.bgOverlay, { backgroundColor: overlayColor }]} />
-          )}
-          <View className={className as any}>
-            <View style={styles.content} className={contentClassName as any}>
-              {children}
-            </View>
-          </View>
-        </ImageBackground>
-      ) : (
-        <View className={className as any}>
-          <View style={styles.content} className={contentClassName as any}>
-            {children}
-          </View>
-        </View>
-      )}
-    </Animated.View>
+    <View
+      style={[...getCardStyle(), style]}
+      className={className as any}
+    >
+      <View style={[styles.content, contentStyle]} className={contentClassName as any}>
+        {children}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     borderRadius: theme.borderRadius.md,
     overflow: 'hidden',
+  },
+  elevated: {
+    backgroundColor: theme.colors.surfaceContainerLow,
+  },
+  filled: {
+    backgroundColor: theme.colors.surfaceContainerHighest,
+  },
+  outlined: {
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.glassBorder,
-    backgroundColor: theme.colors.background,
-    
-  },
-  bgImage: {
-    width: '100%',
-  },
-  bgImageRadius: {
-    borderRadius: theme.borderRadius.md,
-  },
-  bgOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6, 28, 18, 0.35)', // default dark green translucent tint
+    borderColor: theme.colors.outlineVariant,
   },
   content: {
     padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
   },
 });
