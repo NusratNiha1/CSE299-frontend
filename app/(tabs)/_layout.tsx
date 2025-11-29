@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Bell, Settings, LineChart, MessageCircle } from 'lucide-react-native';
+import { Home, Bell, Settings, LineChart, MessageCircle, LayoutDashboard } from 'lucide-react-native';
 import { theme } from '@/constants/theme';
 import { useMonitoring } from '@/contexts/MonitoringContext';
 import { View, Text, StyleSheet } from 'react-native';
@@ -32,6 +32,13 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ size, color }) => <Home size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ size, color }) => <LayoutDashboard size={size} color={color} />,
         }}
       />
       <Tabs.Screen

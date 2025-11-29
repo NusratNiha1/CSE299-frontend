@@ -53,6 +53,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.10",
+    "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
     "nativewind": "^4.2.1",

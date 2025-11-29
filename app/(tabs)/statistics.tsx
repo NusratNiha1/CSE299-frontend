@@ -1,94 +1,185 @@
 import React, { useMemo } from 'react';
-import { Text, Dimensions, StyleSheet, ScrollView } from 'react-native';
-import { ui } from '@/constants/ui';
+import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '@/constants/theme';
 import { GlassCard } from '@/components/GlassCard';
-import { useMonitoring } from '@/contexts/MonitoringContext';
-import { BarChart, LineChart } from 'react-native-chart-kit';
+import { ui } from '@/constants/ui';
+import { LineChart, BarChart } from 'react-native-chart-kit';
+import { useBabyLog } from '@/contexts/BabyLogContext';
 
 const screenWidth = Dimensions.get('window').width;
 
-type DaySeries = { labels: string[]; values: number[] };
-
-function formatDay(d: Date) {
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
 export default function StatisticsScreen() {
-  const { cryEvents } = useMonitoring();
-
-  const { countSeries, durationSeries } = useMemo(() => {
-    const byDay = new Map<string, { count: number; duration: number }>();
-    // Initialize last 7 days
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() - i);
-      byDay.set(d.toISOString(), { count: 0, duration: 0 });
-    }
-
-    cryEvents.forEach((e) => {
-      const dt = new Date(e.detected_at);
-      dt.setHours(0, 0, 0, 0);
-      const key = Array.from(byDay.keys()).find(k => new Date(k).getTime() === dt.getTime());
-      const k = key || dt.toISOString();
-      const prev = byDay.get(k) || { count: 0, duration: 0 };
-      byDay.set(k, { count: prev.count + 1, duration: prev.duration + (e.duration_seconds || 0) });
-    });
-
-    const sorted = Array.from(byDay.entries()).sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime());
-    const labels = sorted.map(([k]) => formatDay(new Date(k)));
-    const counts = sorted.map(([, v]) => v.count);
-    const durationsMin = sorted.map(([, v]) => Math.round(v.duration / 60));
-
-    return {
-      countSeries: { labels, values: counts } as DaySeries,
-      durationSeries: { labels, values: durationsMin } as DaySeries,
-    };
-  }, [cryEvents]);
+  const { growthLogs, sleepLogs, feedLogs } = useBabyLog();
 
   const chartConfig = {
     backgroundGradientFrom: theme.colors.secondary,
     backgroundGradientTo: theme.colors.secondary,
-    color: (opacity = 1) => `rgba(255,255,255,${opacity})`,
-    labelColor: (opacity = 1) => `rgba(255,255,255,${opacity})`,
-    barPercentage: 0.6,
-    propsForDots: { r: '4', strokeWidth: '2', stroke: theme.colors.primary },
-  } as const;
+    color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`, // Primary color
+    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+    strokeWidth: 2,
+    barPercentage: 0.5,
+    decimalPlaces: 1,
+    propsForDots: {
+      r: "4",
+      strokeWidth: "2",
+      stroke: theme.colors.primary
+    }
+  };
+
+  // Process Growth Data (Height & Weight)
+  const growthData = useMemo(() => {
+    if (growthLogs.length === 0) return null;
+
+    // Sort by date
+    const sorted = [...growthLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Take last 6 entries for readability
+    const recent = sorted.slice(-6);
+
+    return {
+      labels: recent.map(l => new Date(l.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })),
+      heights: recent.map(l => l.height),
+      weights: recent.map(l => l.weight),
+      bmis: recent.map(l => l.bmi),
+    };
+  }, [growthLogs]);
+
+  // Process Sleep Data (Daily Duration)
+  const sleepData = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+    }).reverse();
+
+    const data = last7Days.map(date => {
+      const dayLogs = sleepLogs.filter(l => l.date.startsWith(date));
+      const totalMinutes = dayLogs.reduce((acc, curr) => acc + curr.durationMinutes, 0);
+      return totalMinutes / 60; // Hours
+    });
+
+    return {
+      labels: last7Days.map(d => new Date(d).toLocaleDateString(undefined, { weekday: 'short' })),
+      data,
+    };
+  }, [sleepLogs]);
+
+  // Process Feed Data (Daily Count)
+  // "Feeding time (3 times a day, day basis, need to show for consistant feeding time)"
+  // For now, showing frequency per day to ensure they are eating enough times.
+  const feedData = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+    }).reverse();
+
+    const data = last7Days.map(date => {
+      return feedLogs.filter(l => l.date.startsWith(date)).length;
+    });
+
+    return {
+      labels: last7Days.map(d => new Date(d).toLocaleDateString(undefined, { weekday: 'short' })),
+      data,
+    };
+  }, [feedLogs]);
 
   return (
     <LinearGradient colors={[theme.colors.background, theme.colors.secondary]} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title} className="text-text text-xl font-bold">Statistics</Text>
-        <Text style={styles.subtitle} className="text-textSecondary mt-[6px] mb-[16px]">Past 7 days • Cry events and total cry duration</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Statistics</Text>
+          <Text style={styles.subtitle}>Growth & Activity Trends</Text>
+        </View>
+
+        {growthData ? (
+          <>
+            <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
+              <Text style={styles.cardTitle}>Height (cm)</Text>
+              <LineChart
+                data={{
+                  labels: growthData.labels,
+                  datasets: [{ data: growthData.heights }]
+                }}
+                width={screenWidth - 48}
+                height={220}
+                chartConfig={chartConfig}
+                bezier
+                style={styles.chart}
+              />
+            </GlassCard>
+
+            <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
+              <Text style={styles.cardTitle}>Weight (kg)</Text>
+              <LineChart
+                data={{
+                  labels: growthData.labels,
+                  datasets: [{ data: growthData.weights }]
+                }}
+                width={screenWidth - 48}
+                height={220}
+                chartConfig={{ ...chartConfig, color: (opacity = 1) => `rgba(52, 152, 219, ${opacity})` }}
+                bezier
+                style={styles.chart}
+              />
+            </GlassCard>
+
+            <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
+              <Text style={styles.cardTitle}>BMI Trend</Text>
+              <LineChart
+                data={{
+                  labels: growthData.labels,
+                  datasets: [{ data: growthData.bmis }]
+                }}
+                width={screenWidth - 48}
+                height={220}
+                chartConfig={{ ...chartConfig, color: (opacity = 1) => `rgba(241, 196, 15, ${opacity})` }}
+                bezier
+                style={styles.chart}
+              />
+            </GlassCard>
+          </>
+        ) : (
+          <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
+            <Text style={styles.emptyText}>Add growth logs to see charts</Text>
+          </GlassCard>
+        )}
 
         <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
-          <Text style={styles.cardTitle}>Daily Cry Events</Text>
+          <Text style={styles.cardTitle}>Sleep Duration (Hours)</Text>
           <BarChart
-            data={{ labels: countSeries.labels, datasets: [{ data: countSeries.values }] }}
-            width={screenWidth - 32}
+            data={{
+              labels: sleepData.labels,
+              datasets: [{ data: sleepData.data }]
+            }}
+            width={screenWidth - 48}
+            height={220}
+            yAxisLabel=""
+            yAxisSuffix="h"
+            chartConfig={{ ...chartConfig, color: (opacity = 1) => `rgba(142, 68, 173, ${opacity})` }}
+            style={styles.chart}
+            showValuesOnTopOfBars
+          />
+        </GlassCard>
+
+        <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
+          <Text style={styles.cardTitle}>Daily Feeds</Text>
+          <BarChart
+            data={{
+              labels: feedData.labels,
+              datasets: [{ data: feedData.data }]
+            }}
+            width={screenWidth - 48}
             height={220}
             yAxisLabel=""
             yAxisSuffix=""
-            chartConfig={chartConfig}
-            fromZero
+            chartConfig={{ ...chartConfig, color: (opacity = 1) => `rgba(231, 76, 60, ${opacity})` }}
             style={styles.chart}
+            showValuesOnTopOfBars
           />
         </GlassCard>
 
-        <GlassCard style={styles.card} className={ui.cardContainer} contentClassName={ui.cardContent}>
-          <Text style={styles.cardTitle}>Total Crying Duration (min)</Text>
-          <LineChart
-            data={{ labels: durationSeries.labels, datasets: [{ data: durationSeries.values, strokeWidth: 2 }] }}
-            width={screenWidth - 32}
-            height={240}
-            chartConfig={chartConfig}
-            bezier
-            fromZero
-            style={styles.chart}
-          />
-        </GlassCard>
       </ScrollView>
     </LinearGradient>
   );
@@ -97,17 +188,11 @@ export default function StatisticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: theme.spacing.lg, paddingTop: 60, paddingBottom: 40 },
-  title: { color: theme.colors.text, fontSize: theme.fontSize.xl, fontWeight: theme.fontWeight.bold as any },
-  subtitle: { color: theme.colors.textSecondary, marginTop: 6, marginBottom: 16 },
-  card: { marginTop: theme.spacing.md },
-  chart: { marginVertical: 8, borderRadius: theme.borderRadius.md },
-  cardTitle: {
-    color: theme.colors.text,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold as any,
-    marginBottom: theme.spacing.sm,
-  },
-  noteCard: { marginTop: theme.spacing.lg },
-  noteTitle: { color: theme.colors.text, fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.bold as any, marginBottom: 4 },
-  noteText: { color: theme.colors.textSecondary },
+  header: { marginBottom: theme.spacing.lg },
+  title: { color: theme.colors.text, fontSize: theme.fontSize.xxl, fontWeight: theme.fontWeight.bold },
+  subtitle: { color: theme.colors.textSecondary, marginTop: theme.spacing.xs, fontSize: theme.fontSize.md },
+  card: { marginBottom: theme.spacing.lg, padding: theme.spacing.md },
+  cardTitle: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.md },
+  chart: { marginVertical: 8, borderRadius: 16 },
+  emptyText: { color: theme.colors.textSecondary, textAlign: 'center', marginVertical: 20 },
 });

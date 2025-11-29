@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import authRoutes from './routes/auth.js';
 import devicesRoutes from './routes/devices.js';
 import monitoringRoutes from './routes/monitoring.js';
+import logsRoutes from './routes/logs.js';
 import errorHandler from './middleware/error.js';
 import { db } from './db/client.js';
 
@@ -33,6 +34,7 @@ app.get('/health', (req, res) => {
 app.use('/auth', authRoutes);
 app.use('/devices', devicesRoutes);
 app.use('/monitoring', monitoringRoutes);
+app.use('/logs', logsRoutes);
 
 app.get('/_db-status', (req, res) => {
   res.json({ connected: !!db });

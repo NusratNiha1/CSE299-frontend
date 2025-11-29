@@ -75,3 +75,59 @@ export const monitoring = pgTable('monitoring', {
   status: text('status'),
   timestamp: timestamp('timestamp', { withTimezone: true })
 });
+
+// Sleep Logs
+export const sleepLogs = pgTable('sleep_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  startTime: timestamp('start_time', { withTimezone: true }).notNull(),
+  endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+  durationMinutes: integer('duration_minutes').notNull(),
+  date: timestamp('date', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// Feed Logs
+export const feedLogs = pgTable('feed_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  time: timestamp('time', { withTimezone: true }).notNull(),
+  type: text('type').notNull(), // 'breast', 'bottle', 'solid'
+  amount: numeric('amount'), // ml or grams
+  notes: text('notes'),
+  date: timestamp('date', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// Growth Logs
+export const growthLogs = pgTable('growth_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  date: timestamp('date', { withTimezone: true }).notNull(),
+  height: numeric('height').notNull(), // cm
+  weight: numeric('weight').notNull(), // kg
+  bmi: numeric('bmi').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// Health Logs
+export const healthLogs = pgTable('health_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  date: timestamp('date', { withTimezone: true }).notNull(),
+  condition: text('condition').notNull(),
+  notes: text('notes'),
+  severity: text('severity').notNull(), // 'mild', 'moderate', 'severe'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// Vaccine Logs
+export const vaccineLogs = pgTable('vaccine_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  date: timestamp('date', { withTimezone: true }).notNull(),
+  vaccineName: text('vaccine_name').notNull(),
+  status: text('status').notNull(), // 'scheduled', 'completed', 'skipped'
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
