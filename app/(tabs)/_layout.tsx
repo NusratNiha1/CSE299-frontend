@@ -1,11 +1,10 @@
 import { Tabs } from 'expo-router';
-import { Home, Bell, Settings, LineChart, MessageCircle, LayoutDashboard } from 'lucide-react-native';
+import { Home, Settings, LineChart, MessageCircle, LayoutDashboard } from 'lucide-react-native';
 import { theme } from '@/constants/theme';
 import { useMonitoring } from '@/contexts/MonitoringContext';
 import { View, Text, StyleSheet } from 'react-native';
 
 export default function TabLayout() {
-  const { unreadCount } = useMonitoring();
 
   return (
     <Tabs
@@ -55,24 +54,7 @@ export default function TabLayout() {
           tabBarIcon: ({ size, color }) => <MessageCircle size={size} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: 'Notifications',
-          tabBarIcon: ({ size, color }) => (
-            <View>
-              <Bell size={size} color={color} />
-              {unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="settings"
         options={{
@@ -84,22 +66,4 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    position: 'absolute',
-    right: -8,
-    top: -4,
-    backgroundColor: theme.colors.error,
-    borderRadius: theme.borderRadius.full,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: theme.colors.text,
-    fontSize: 10,
-    fontWeight: theme.fontWeight.bold as any,
-  },
-}) as any;
+
