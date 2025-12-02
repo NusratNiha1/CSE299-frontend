@@ -1,5 +1,5 @@
 // API client for cry detection backend
-const CRY_DETECTION_API_URL = 'https://julissa-unimpressive-felicia.ngrok-free.dev/predict';
+export const CRY_DETECTION_API_URL = 'https://julissa-unimpressive-felicia.ngrok-free.dev/predict';
 
 export interface CryDetectionResponse {
     any_cry: boolean;
@@ -22,15 +22,27 @@ export interface CryDetectionResponse {
  * @param audioBlob - The audio file blob (4 second chunk)
  * @returns Promise with cry detection results
  */
-export async function detectCry(audioBlob: Blob | ArrayBuffer): Promise<CryDetectionResponse> {
+export async function detectCry(audioBlob: Blob | ArrayBuffer | { uri: string; name?: string; type?: string }): Promise<CryDetectionResponse> {
     const formData = new FormData();
 
-    // Convert ArrayBuffer to Blob if needed
-    const blob = audioBlob instanceof ArrayBuffer
-        ? new Blob([audioBlob], { type: 'audio/wav' })
-        : audioBlob;
-
-    formData.append('audio', blob as any, 'audio.wav');
+    // If it's a React Native file object (uri), append it directly
+    if (typeof audioBlob === 'object' && (audioBlob as any).uri) {
+        const fileObj: any = audioBlob;
+        // Try to infer type from provided value
+        const inferredType = fileObj.type || (fileObj.name ? guessMimeType(fileObj.name) : 'audio/wav');
+        formData.append('audio', {
+            uri: fileObj.uri,
+            name: fileObj.name || 'audio.wav',
+            type: inferredType,
+        } as any);
+        console.log('Detected RN file upload:', { uri: fileObj.uri, name: fileObj.name, type: inferredType });
+    } else {
+        // Convert ArrayBuffer to Blob if needed
+        const blob = audioBlob instanceof ArrayBuffer
+            ? new Blob([audioBlob], { type: 'audio/wav' })
+            : audioBlob as Blob;
+        formData.append('audio', blob as any, 'audio.wav');
+    }
 
     console.log('--- API Request Debug Info ---');
     console.log('URL:', CRY_DETECTION_API_URL);
@@ -40,11 +52,12 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer): Promise<CryDetec
         isBlob: blob instanceof Blob
     });
 
-    const headers = {
+    const headers: any = {
         'Accept': 'application/json',
         'ngrok-skip-browser-warning': 'true',
     };
     console.log('Headers:', headers);
+    console.log('Sending FormData to:', CRY_DETECTION_API_URL);
     console.log('Body: FormData with audio file "audio.wav"');
     console.log('------------------------------');
 
@@ -52,6 +65,7 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer): Promise<CryDetec
     const response = await fetch(CRY_DETECTION_API_URL, {
         method: 'POST',
         body: formData,
+        // Do NOT set Content-Type for multipart in React Native; let the runtime set the correct boundary
         headers: headers,
     });
 
@@ -67,6 +81,20 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer): Promise<CryDetec
     } catch (error) {
         console.error('Fetch error details:', error);
         throw error;
+    }
+}
+
+// Small helper for guessing MIME types by file extension
+function guessMimeType(name: string): string {
+    const ext = name.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        case 'mp3': return 'audio/mpeg';
+        case 'wav': return 'audio/wav';
+        case 'm4a': return 'audio/mp4';
+        case 'aac': return 'audio/aac';
+        case 'oga': return 'audio/ogg';
+        case 'ogg': return 'audio/ogg';
+        default: return 'audio/wav';
     }
 }
 
