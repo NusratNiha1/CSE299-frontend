@@ -40,6 +40,111 @@ interface ChunkResult extends CryDetectionResponse {
   timestamp: number;
 }
 
+const CryAnalysisGraph = ({ result }: { result: CryDetectionResponse }) => {
+  if (!result || !result.frame_probabilities || result.frame_probabilities.length === 0) {
+    return null;
+  }
+
+  // Downsample if too many points (limit to ~50 points for performance)
+  const maxPoints = 50;
+  const step = Math.ceil(result.frame_probabilities.length / maxPoints);
+
+  const dataPoints = result.frame_probabilities.filter((_, i) => i % step === 0);
+  const labels = result.frame_times_sec
+    ? result.frame_times_sec.filter((_, i) => i % step === 0).map(t => t.toFixed(1))
+    : dataPoints.map((_, i) => i.toString());
+
+  // Ensure we have at least some data
+  if (dataPoints.length === 0) return null;
+
+  return (
+    <View style={styles.graphContainer}>
+      <Text style={styles.graphTitle}>Cry Probability Analysis</Text>
+
+      <LineChart
+        data={{
+          labels: labels.length > 10 ? labels.filter((_, i) => i % Math.ceil(labels.length / 6) === 0) : labels,
+          datasets: [
+            {
+              data: dataPoints,
+              color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`, // Green line
+              strokeWidth: 2
+            },
+            {
+              data: new Array(dataPoints.length).fill(result.threshold),
+              color: () => `rgba(255, 0, 0, 0.5)`, // Red threshold line
+              strokeWidth: 1,
+              withDots: false,
+            }
+          ],
+          legend: ["Probability", "Threshold"]
+        }}
+        width={SCREEN_WIDTH - 80} // Adjust for padding
+        height={220}
+        yAxisLabel=""
+        yAxisSuffix=""
+        yAxisInterval={1}
+        chartConfig={{
+          backgroundColor: "transparent",
+          backgroundGradientFrom: "transparent",
+          backgroundGradientTo: "transparent",
+          decimalPlaces: 2,
+          color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+          labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+          style: {
+            borderRadius: 16
+          },
+          propsForDots: {
+            r: "3",
+            strokeWidth: "1",
+            stroke: "#ffa726"
+          }
+        }}
+        bezier
+        style={{
+          marginVertical: 8,
+          borderRadius: 16
+        }}
+      />
+
+      {/* Segments Visualization */}
+      {result.segments && result.segments.length > 0 && (
+        <View style={styles.segmentsList}>
+          <Text style={styles.segmentsHeader}>Detected Cry Segments:</Text>
+          {result.segments.map((seg, idx) => (
+            <View key={idx} style={styles.segmentItem}>
+              <View style={styles.segmentTime}>
+                <Text style={styles.segmentTimeText}>
+                  {seg.start.toFixed(2)}s - {seg.end.toFixed(2)}s
+                </Text>
+                <Text style={styles.segmentDuration}>
+                  ({seg.duration.toFixed(2)}s)
+                </Text>
+              </View>
+              <View style={styles.segmentBarContainer}>
+                <View style={[styles.segmentBar, { width: `${Math.min(100, seg.duration * 20)}%` }]} />
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Cry Ratio</Text>
+          <Text style={styles.statValue}>{(result.cry_ratio * 100).toFixed(1)}%</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Any Cry?</Text>
+          <Text style={[styles.statValue, { color: result.any_cry ? theme.colors.error : theme.colors.success }]}>
+            {result.any_cry ? 'YES' : 'NO'}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
 export default function MonitoringScreen() {
   const router = useRouter();
   const videoRef = useRef<Video>(null);
@@ -240,12 +345,7 @@ export default function MonitoringScreen() {
             )}
             {audioError && <Text style={{ color: theme.colors.error, marginTop: 8 }}>{audioError}</Text>}
             {audioResult && (
-              <>
-                <Text style={styles.rawJsonTitle}>API Response:</Text>
-                <ScrollView style={styles.rawJsonBox} nestedScrollEnabled>
-                  <Text style={styles.rawJsonText}>{JSON.stringify(audioResult, null, 2)}</Text>
-                </ScrollView>
-              </>
+              <CryAnalysisGraph result={audioResult} />
             )}
           </GlassCard>
 
@@ -253,7 +353,39 @@ export default function MonitoringScreen() {
           <GlassCard style={styles.selectionCard}>
             <Text style={styles.sectionTitle}>Option 2: Upload Video File</Text>
             <Text style={styles.selectionDescription}>Select a video file, extract audio as WAV, and send to the API.</Text>
-            {!videoUri && <ButtonPrimary title="Select Video File" onPress={handleSelectVideo} />}
+            {!videoUri && <ButtonPrimary title="Select Video File" onPress={async () => {
+              try {
+                console.log('Video selection button clicked');
+                addLog('Requesting video selection...');
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                console.log('Permission status:', status);
+                if (status !== 'granted') {
+                  setAudioError('Permission Required: Please grant photo library access to select a video.');
+                  addLog('Permission denied');
+                  return;
+                }
+                addLog('Permission granted, launching picker...');
+                const result = await ImagePicker.launchImageLibraryAsync({
+                  mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+                  allowsEditing: false,
+                  quality: 0.8,
+                });
+                console.log('Picker result:', result);
+                if (!result.canceled && result.assets[0]) {
+                  setVideoUri(result.assets[0].uri);
+                  setAudioResult(null);
+                  setAudioError(null);
+                  setAudioStatus(null);
+                  addLog('Video selected: ' + result.assets[0].uri);
+                } else {
+                  addLog('Video selection canceled');
+                }
+              } catch (error: any) {
+                console.error('Error selecting video:', error);
+                setAudioError('Failed to select video: ' + error.message);
+                addLog('Error selecting video: ' + error.message);
+              }
+            }} />}
             {videoUri && (
               <>
                 <Video
@@ -262,9 +394,17 @@ export default function MonitoringScreen() {
                   style={styles.videoPreview}
                   useNativeControls
                   resizeMode={"contain" as any}
-                  onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                  onPlaybackStatusUpdate={(status: any) => {
+                    if (status.isLoaded && status.durationMillis) {
+                      setDuration(status.durationMillis);
+                    }
+                  }}
                 />
-                <Text style={styles.selectionDescription}>Duration: {formatTime(duration)}</Text>
+                {duration > 0 && (
+                  <Text style={styles.selectionDescription}>
+                    Duration: {Math.floor(duration / 1000 / 60)}:{String(Math.floor((duration / 1000) % 60)).padStart(2, '0')}
+                  </Text>
+                )}
                 {audioStatus && <Text style={styles.statusText}>{audioStatus}</Text>}
                 {audioUploading && <ActivityIndicator size="small" color={theme.colors.primary} />}
                 <ButtonPrimary
@@ -279,12 +419,34 @@ export default function MonitoringScreen() {
                       addLog('Starting audio extraction from video...');
                       const audioBuffer = await VideoAudioProcessor.extractFullAudio(videoUri);
                       addLog(`Audio extracted: ${audioBuffer.byteLength} bytes`);
+
+                      setAudioStatus('Preparing audio file...');
+                      // Convert ArrayBuffer to base64 for React Native
+                      const uint8Array = new Uint8Array(audioBuffer);
+                      let binary = '';
+                      for (let i = 0; i < uint8Array.byteLength; i++) {
+                        binary += String.fromCharCode(uint8Array[i]);
+                      }
+                      const base64Audio = btoa(binary);
+
+                      // Save to cache directory
+                      const FileSystem = require('expo-file-system/legacy');
+                      const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+                      const audioFilePath = `${cacheDir}extracted-audio-${Date.now()}.wav`;
+                      await FileSystem.writeAsStringAsync(audioFilePath, base64Audio, {
+                        encoding: FileSystem.EncodingType.Base64
+                      });
+                      addLog(`Audio saved to: ${audioFilePath}`);
+
                       setAudioStatus('Sending to API...');
-                      await sendAudio(undefined, undefined);
-                      // Actually send the extracted audio
+                      // Use the file URI in FormData (React Native style)
                       const formData = new FormData();
-                      const blob = new Blob([audioBuffer], { type: 'audio/wav' });
-                      formData.append('audio', blob as any, 'video-audio.wav');
+                      formData.append('audio', {
+                        uri: audioFilePath,
+                        name: 'video-audio.wav',
+                        type: 'audio/wav'
+                      } as any);
+
                       const resp = await fetch(CRY_DETECTION_API_URL, {
                         method: 'POST',
                         body: formData,
@@ -302,6 +464,13 @@ export default function MonitoringScreen() {
                         setAudioStatus('Failed.');
                       }
                       addLog('Video audio processing complete.');
+
+                      // Clean up the temporary file
+                      try {
+                        await FileSystem.deleteAsync(audioFilePath, { idempotent: true });
+                      } catch (e) {
+                        // Ignore cleanup errors
+                      }
                     } catch (e: any) {
                       addLog('Video audio extraction failed: ' + e.message);
                       setAudioError(e.message);
@@ -320,12 +489,7 @@ export default function MonitoringScreen() {
             )}
             {audioError && <Text style={{ color: theme.colors.error, marginTop: 8 }}>{audioError}</Text>}
             {audioResult && (
-              <>
-                <Text style={styles.rawJsonTitle}>API Response:</Text>
-                <ScrollView style={styles.rawJsonBox} nestedScrollEnabled>
-                  <Text style={styles.rawJsonText}>{JSON.stringify(audioResult, null, 2)}</Text>
-                </ScrollView>
-              </>
+              <CryAnalysisGraph result={audioResult} />
             )}
           </GlassCard>
         </ScrollView>
@@ -1153,5 +1317,73 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontFamily: 'monospace',
     marginBottom: 4,
+  },
+  graphContainer: {
+    marginTop: theme.spacing.md,
+    width: '100%',
+  },
+  graphTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  segmentsList: {
+    marginTop: theme.spacing.md,
+    width: '100%',
+  },
+  segmentsHeader: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  segmentItem: {
+    marginBottom: theme.spacing.sm,
+  },
+  segmentTime: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  segmentTimeText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text,
+    fontFamily: 'monospace',
+  },
+  segmentDuration: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+  },
+  segmentBarContainer: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  segmentBar: {
+    height: '100%',
+    backgroundColor: theme.colors.error,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: 'bold',
+    color: theme.colors.text,
   },
 });
