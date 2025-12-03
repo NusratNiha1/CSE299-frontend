@@ -138,6 +138,47 @@ export class VideoAudioProcessor {
     }
 
     /**
+     * Extract full audio from video file
+     * Returns ArrayBuffer suitable for sending to API
+     * NOTE: This reads the entire video file - for actual audio extraction,
+     * you would need ffmpeg or similar tool. This is a simplified version.
+     */
+    static async extractFullAudio(videoUri: string): Promise<ArrayBuffer> {
+        try {
+            // On Web, fetch the entire file
+            if (Platform.OS === 'web') {
+                const response = await fetch(videoUri);
+                const buffer = await response.arrayBuffer();
+                return buffer;
+            }
+
+            // On Native, read the file
+            const fileInfo = await FileSystem.getInfoAsync(videoUri);
+
+            if (!fileInfo.exists) {
+                throw new Error('Video file not found');
+            }
+
+            // Read the entire file as base64
+            const base64 = await FileSystem.readAsStringAsync(videoUri, {
+                encoding: 'base64'
+            });
+
+            // Convert base64 to ArrayBuffer
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            return bytes.buffer;
+        } catch (error) {
+            console.error('Error extracting full audio:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Convert ArrayBuffer to Blob for upload
      */
     static arrayBufferToBlob(buffer: ArrayBuffer, mimeType: string = 'audio/wav'): Blob {

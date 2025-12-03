@@ -1,5 +1,9 @@
 // API client for cry detection backend
-export const CRY_DETECTION_API_URL = 'https://julissa-unimpressive-felicia.ngrok-free.dev/predict';
+// Use local proxy to bypass CORS on web, or direct ngrok URL for native
+export const CRY_DETECTION_API_URL =
+    typeof window !== 'undefined' && window.location?.hostname === 'localhost'
+        ? 'http://localhost:3000/cry-detection/predict'  // Use proxy for web
+        : 'https://julissa-unimpressive-felicia.ngrok-free.dev/predict';  // Direct for native
 
 export interface CryDetectionResponse {
     any_cry: boolean;
@@ -42,15 +46,16 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer | { uri: string; n
             ? new Blob([audioBlob], { type: 'audio/wav' })
             : audioBlob as Blob;
         formData.append('audio', blob as any, 'audio.wav');
+
+        console.log('Blob Info:', {
+            size: blob.size,
+            type: blob.type,
+            isBlob: blob instanceof Blob
+        });
     }
 
     console.log('--- API Request Debug Info ---');
     console.log('URL:', CRY_DETECTION_API_URL);
-    console.log('Blob Info:', {
-        size: blob.size,
-        type: blob.type,
-        isBlob: blob instanceof Blob
-    });
 
     const headers: any = {
         'Accept': 'application/json',

@@ -93,20 +93,26 @@ export default function MonitoringScreen() {
   const pickAudio = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: 'audio/*' });
-      // DocumentPicker types differ between SDKs; check for uri property to be safe
-      const successResult: any = result as any;
-      if (successResult && successResult.uri) {
-        setAudioUri(successResult.uri);
-        setAudioName(successResult.name || 'audio');
+      console.log('DocumentPicker result:', result);
+
+      // Handle the new DocumentPicker API structure
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setAudioUri(file.uri);
+        setAudioName(file.name || 'audio');
         setAudioResult(null);
         setAudioError(null);
         setAudioStatus('Audio selected. Ready to send.');
-        addLog('Audio selected: ' + successResult.uri);
+        addLog('Audio selected: ' + file.uri);
         // Auto-send after selection for quick testing; pass uri/name directly
-        setTimeout(() => sendAudio(successResult.uri, successResult.name), 200);
+        setTimeout(() => sendAudio(file.uri, file.name), 200);
+      } else {
+        addLog('Audio selection canceled or no file selected');
       }
     } catch (e: any) {
+      console.error('Error picking audio:', e);
       setAudioError(e.message);
+      addLog('Error picking audio: ' + e.message);
     }
   };
 
@@ -199,7 +205,7 @@ export default function MonitoringScreen() {
     }
   };
 
-  // Early return to show only audio upload UI for testing
+  // Early return to show audio/video upload UI for testing
   if (simpleMode) {
     return (
       <LinearGradient colors={[theme.colors.background, theme.colors.secondary]} style={styles.container}>
@@ -207,13 +213,14 @@ export default function MonitoringScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Cry Monitoring (Audio)</Text>
+          <Text style={styles.headerTitle}>Cry Detection Test</Text>
           <View style={{ width: 32 }} />
         </View>
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Audio Upload Section */}
           <GlassCard style={styles.selectionCard}>
-            <Text style={styles.sectionTitle}>Upload Audio</Text>
-            <Text style={styles.selectionDescription}>Select an audio file (WAV/MP3) and send directly to the cry detection API. No preprocessing.</Text>
+            <Text style={styles.sectionTitle}>Option 1: Upload Audio File</Text>
+            <Text style={styles.selectionDescription}>Select an audio file (WAV/MP3) and send directly to the cry detection API.</Text>
             {!audioUri && <ButtonPrimary title="Select Audio File" onPress={pickAudio} />}
             {audioUri && (
               <>
@@ -226,8 +233,88 @@ export default function MonitoringScreen() {
                   loading={audioUploading}
                   style={{ marginTop: 12 }}
                 />
-                <TouchableOpacity onPress={() => { setAudioUri(null); setAudioResult(null); setAudioError(null); }} style={styles.resetButton}>
+                <TouchableOpacity onPress={() => { setAudioUri(null); setAudioResult(null); setAudioError(null); setAudioStatus(null); }} style={styles.resetButton}>
                   <Text style={styles.resetButtonText}>Clear Audio</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {audioError && <Text style={{ color: theme.colors.error, marginTop: 8 }}>{audioError}</Text>}
+            {audioResult && (
+              <>
+                <Text style={styles.rawJsonTitle}>API Response:</Text>
+                <ScrollView style={styles.rawJsonBox} nestedScrollEnabled>
+                  <Text style={styles.rawJsonText}>{JSON.stringify(audioResult, null, 2)}</Text>
+                </ScrollView>
+              </>
+            )}
+          </GlassCard>
+
+          {/* Video Upload Section */}
+          <GlassCard style={styles.selectionCard}>
+            <Text style={styles.sectionTitle}>Option 2: Upload Video File</Text>
+            <Text style={styles.selectionDescription}>Select a video file, extract audio as WAV, and send to the API.</Text>
+            {!videoUri && <ButtonPrimary title="Select Video File" onPress={handleSelectVideo} />}
+            {videoUri && (
+              <>
+                <Video
+                  ref={videoRef}
+                  source={{ uri: videoUri }}
+                  style={styles.videoPreview}
+                  useNativeControls
+                  resizeMode={"contain" as any}
+                  onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                />
+                <Text style={styles.selectionDescription}>Duration: {formatTime(duration)}</Text>
+                {audioStatus && <Text style={styles.statusText}>{audioStatus}</Text>}
+                {audioUploading && <ActivityIndicator size="small" color={theme.colors.primary} />}
+                <ButtonPrimary
+                  title={audioUploading ? 'Processing...' : 'Extract Audio & Send'}
+                  onPress={async () => {
+                    if (!videoUri) return;
+                    setAudioUploading(true);
+                    setAudioError(null);
+                    setAudioResult(null);
+                    setAudioStatus('Extracting audio from video...');
+                    try {
+                      addLog('Starting audio extraction from video...');
+                      const audioBuffer = await VideoAudioProcessor.extractFullAudio(videoUri);
+                      addLog(`Audio extracted: ${audioBuffer.byteLength} bytes`);
+                      setAudioStatus('Sending to API...');
+                      await sendAudio(undefined, undefined);
+                      // Actually send the extracted audio
+                      const formData = new FormData();
+                      const blob = new Blob([audioBuffer], { type: 'audio/wav' });
+                      formData.append('audio', blob as any, 'video-audio.wav');
+                      const resp = await fetch(CRY_DETECTION_API_URL, {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'Accept': 'application/json', 'ngrok-skip-browser-warning': 'true' } as any
+                      });
+                      const respText = await resp.text();
+                      let respBody;
+                      try { respBody = JSON.parse(respText); } catch { respBody = respText; }
+                      setDebugResponse({ status: resp.status, ok: resp.ok, body: respBody });
+                      if (resp.ok && typeof respBody === 'object') {
+                        setAudioResult(respBody);
+                        setAudioStatus('Completed. Response received.');
+                      } else {
+                        setAudioError(`Server responded ${resp.status}: ${respText}`);
+                        setAudioStatus('Failed.');
+                      }
+                      addLog('Video audio processing complete.');
+                    } catch (e: any) {
+                      addLog('Video audio extraction failed: ' + e.message);
+                      setAudioError(e.message);
+                      setAudioStatus('Failed to extract audio.');
+                    } finally {
+                      setAudioUploading(false);
+                    }
+                  }}
+                  loading={audioUploading}
+                  style={{ marginTop: 12 }}
+                />
+                <TouchableOpacity onPress={() => { setVideoUri(null); setAudioResult(null); setAudioError(null); setAudioStatus(null); }} style={styles.resetButton}>
+                  <Text style={styles.resetButtonText}>Clear Video</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -469,9 +556,9 @@ export default function MonitoringScreen() {
           {!!audioUri && (
             <>
               <Text style={styles.selectionDescription}>Selected: {audioName}</Text>
-                <ButtonPrimary
-                  title={audioUploading ? 'Sending...' : 'Send Audio'}
-                  onPress={() => sendAudio()}
+              <ButtonPrimary
+                title={audioUploading ? 'Sending...' : 'Send Audio'}
+                onPress={() => sendAudio()}
                 loading={audioUploading}
                 style={{ marginTop: 12 }}
               />
@@ -779,11 +866,18 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   selectionCard: {
-    alignItems: 'center',
     paddingVertical: theme.spacing.xxl,
+    marginBottom: theme.spacing.lg,
   },
   audioCard: {
     marginBottom: theme.spacing.lg,
+  },
+  videoPreview: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#000',
+    borderRadius: theme.borderRadius.md,
+    marginBottom: theme.spacing.md,
   },
   iconContainer: {
     width: 120,
