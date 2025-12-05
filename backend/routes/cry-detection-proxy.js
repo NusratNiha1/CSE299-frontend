@@ -8,22 +8,13 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const CRY_DETECTION_API_URL = 'https://julissa-unimpressive-felicia.ngrok-free.dev/predict';
 
-/**
- * Proxy endpoint for cry detection API
- * This bypasses CORS issues when testing on web
- */
 router.post('/predict', upload.single('audio'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No audio file provided' });
         }
 
-        console.log('Proxying cry detection request...');
-        console.log('File:', {
-            originalname: req.file.originalname,
-            mimetype: req.file.mimetype,
-            size: req.file.size
-        });
+      
 
         // Create form data for the external API
         const formData = new FormData();

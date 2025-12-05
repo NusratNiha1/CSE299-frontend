@@ -44,8 +44,6 @@ export default function MonitoringScreen() {
   const videoRef = useRef<Video>(null);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-
-  // Video upload mode state
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -58,19 +56,14 @@ export default function MonitoringScreen() {
   const [currentChunkProcessing, setCurrentChunkProcessing] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
-  const [isReplaying, setIsReplaying] = useState(false); // Track real-time replay mode
-
-  // Live camera mode state
+  const [isReplaying, setIsReplaying] = useState(false);
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [isRecordingLive, setIsRecordingLive] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [liveRecordingUri, setLiveRecordingUri] = useState<string | null>(null); // Used to track recording location
+  const [liveRecordingUri, setLiveRecordingUri] = useState<string | null>(null); 
   const [liveChunkResults, setLiveChunkResults] = useState<ChunkResult[]>([]);
   const [liveRecordingTime, setLiveRecordingTime] = useState(0);
   const extractIntervalRef = useRef<NodeJS.Timeout | number | null>(null);
   const extractCountRef = useRef(0);
-
-  // Animation values
   const waveOpacity = useSharedValue(0.3);
 
   useEffect(() => {
@@ -88,8 +81,6 @@ export default function MonitoringScreen() {
     console.log(message);
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev]);
   };
-
-  // Pick an audio file for direct cry detection test
 
 
   const handleRecordVideo = async () => {
@@ -177,7 +168,7 @@ export default function MonitoringScreen() {
       // Start the camera recording
       if (cameraRef.current) {
         const recordingPromise = cameraRef.current.recordAsync({
-          maxDuration: 3600, // 1 hour max
+          maxDuration: 60, // 1 minute max
           maxFileSize: 1000 * 1024 * 1024, // 1GB
         }) as Promise<{uri: string} | undefined>;
 
