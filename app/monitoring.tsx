@@ -53,6 +53,7 @@ export default function MonitoringScreen() {
   const [currentChunkProcessing, setCurrentChunkProcessing] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [isReplaying, setIsReplaying] = useState(false); // Track real-time replay mode
 
   // Animation values
   const waveOpacity = useSharedValue(0.3);
@@ -142,7 +143,7 @@ export default function MonitoringScreen() {
 
     setIsProcessing(true);
     resetState();
-    addLog('Starting analysis (v2.0)...');
+    addLog('Starting analysis...');
 
     // Defer processing to allow UI to update
     setTimeout(async () => {
@@ -150,69 +151,67 @@ export default function MonitoringScreen() {
         addLog('Getting video duration...');
         const videoDuration = await VideoAudioProcessor.getVideoDuration(videoUri);
         setDuration(videoDuration);
-        addLog(`Video duration: ${videoDuration}ms`);
+        addLog(`Video duration: ${videoDuration}ms (${(videoDuration / 1000).toFixed(2)}s)`);
 
         if (videoDuration === 0) {
           throw new Error('Video duration is 0. File might be corrupted.');
         }
 
-        addLog('Splitting video into chunks...');
-        const chunks = await VideoAudioProcessor.splitIntoChunks(videoUri, 4000);
-        addLog(`Split into ${chunks.length} chunks`);
+        addLog('Extracting full audio from video...');
+        setProcessingProgress(25);
 
-        const results: ChunkResult[] = [];
-        let successCount = 0;
+        // Extract full audio without chunking
+        const audioBuffer = await VideoAudioProcessor.extractFullAudio(videoUri);
+        addLog(`Audio extracted: ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+        setProcessingProgress(50);
 
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          setCurrentChunkProcessing(i + 1);
-          setProcessingProgress(((i + 1) / chunks.length) * 100);
+        addLog('Sending to API for analysis...');
+        setProcessingProgress(75);
 
-          addLog(`Processing chunk ${i + 1}/${chunks.length} (${chunk.startTime}-${chunk.endTime}ms)`);
+        try {
+          // Send full audio to API - use the video URI directly as a React Native file object
+          const result = await detectCry({
+            uri: videoUri,
+            name: 'video-audio.wav',
+            type: 'audio/wav',
+          });
 
-          try {
-            addLog('Extracting audio...');
-            const audioBuffer = await VideoAudioProcessor.extractAudioChunk(
-              videoUri,
-              chunk.startTime,
-              chunk.endTime
-            );
-            addLog(`Audio extracted: ${audioBuffer.byteLength} bytes`);
+          addLog(`✅ API Response received`);
+          addLog(`Crying detected: ${result.any_cry ? 'YES' : 'NO'}`);
+          addLog(`Cry ratio: ${(result.cry_ratio * 100).toFixed(2)}%`);
+          addLog(`Cry segments found: ${result.segments.length}`);
 
-            addLog('Sending to API...');
-            const result = await detectCry(audioBuffer);
-            addLog(`API Response: Cry=${result.any_cry}, Ratio=${result.cry_ratio.toFixed(2)}`);
+          // Store result as a single chunk with index 0 (represents whole video)
+          const singleChunk: ChunkResult = {
+            ...result,
+            chunkIndex: 0,
+            timestamp: 0,
+          };
 
-            results.push({
-              ...result,
-              chunkIndex: i,
-              timestamp: chunk.startTime,
-            });
+          setChunkResults([singleChunk]);
+          setCurrentChunkIndex(0);
+          setHasAnalyzed(true);
+          setProcessingProgress(100);
 
-            successCount++;
-            setChunkResults([...results]);
+          addLog('✅ Analysis complete!');
 
-            // Add a small delay to ensure UI updates and processing feels sequential
-            await new Promise(resolve => setTimeout(resolve, 500));
+          // Start real-time replay visualization
+          addLog('Starting real-time replay visualization...');
+          setIsReplaying(true);
 
-          } catch (error: any) {
-            addLog(`❌ Error chunk ${i + 1}: ${error.message}`);
-            addLog('⚠️ Stopping analysis due to error. Please check your connection or API URL.');
-            console.error(error);
-            break; // Stop processing further chunks if one fails
+          // Seek to start and play
+          if (videoRef.current) {
+            await videoRef.current.pauseAsync();
+            await videoRef.current.setPositionAsync(0);
+            await new Promise(resolve => setTimeout(resolve, 200)); // Give video time to seek
+            await videoRef.current.playAsync();
+            addLog('Playback started - syncing with analysis');
           }
-        }
-
-        setHasAnalyzed(true);
-        addLog(`Analysis complete. Success: ${successCount}/${chunks.length}`);
-
-        if (results.length === 0) {
-          Alert.alert('Analysis Failed', 'Could not process any chunks.');
-        } else {
-          // Auto-open logs if there were errors
-          if (successCount < chunks.length) {
-            setShowLogs(true);
-          }
+        } catch (error: any) {
+          addLog(`❌ API Error: ${error.message}`);
+          addLog('⚠️ Please check your connection and API URL');
+          console.error('API Error:', error);
+          Alert.alert('Analysis Error', `Failed to analyze video: ${error.message}`);
         }
       } catch (error: any) {
         addLog(`❌ Fatal Error: ${error.message}`);
@@ -231,15 +230,51 @@ export default function MonitoringScreen() {
 
       const chunkIndex = Math.floor(status.positionMillis / 4000);
       setCurrentChunkIndex(chunkIndex);
+
+      // Check if video has finished playing
+      if (status.didJustFinish && isReplaying) {
+        addLog('Playback complete - real-time visualization finished');
+        setIsReplaying(false);
+      }
     }
+  };
+
+  // Smooth data using moving average for wave-like curves
+  const smoothData = (data: number[], windowSize: number = 5): number[] => {
+    if (data.length === 0) return data;
+    const smoothed: number[] = [];
+    const halfWindow = Math.floor(windowSize / 2);
+
+    for (let i = 0; i < data.length; i++) {
+      const start = Math.max(0, i - halfWindow);
+      const end = Math.min(data.length, i + halfWindow + 1);
+      const slice = data.slice(start, end);
+      const average = slice.reduce((a, b) => a + b, 0) / slice.length;
+      smoothed.push(average);
+    }
+
+    return smoothed;
   };
 
   const togglePlayPause = async () => {
     if (videoRef.current) {
       if (isPlaying) {
         await videoRef.current.pauseAsync();
+        setIsReplaying(false);
       } else {
-        await videoRef.current.playAsync();
+        // Check if video is at the end, if so restart from beginning
+        if (currentTime >= duration - 100) { // Allow small margin for floating point
+          addLog('Restarting video replay...');
+          await videoRef.current.pauseAsync();
+          await videoRef.current.setPositionAsync(0);
+          await new Promise(resolve => setTimeout(resolve, 200));
+          setIsReplaying(true);
+          await videoRef.current.playAsync();
+        } else {
+          // Resume from current position
+          setIsReplaying(true);
+          await videoRef.current.playAsync();
+        }
       }
     }
   };
@@ -254,16 +289,124 @@ export default function MonitoringScreen() {
       };
     }
 
-    const labels = chunkResults.map((_, i) => `${i * 4}s`);
-    const data = chunkResults.map(r => r.cry_ratio * 100);
+    // For single full-video analysis, use frame_times_sec and frame_probabilities from the response
+    const chunk = chunkResults[0];
+    if (!chunk.frame_times_sec || !chunk.frame_probabilities || chunk.frame_probabilities.length === 0) {
+      // Fallback: show chunk-based data (for backward compatibility)
+      const labels = chunkResults.map((_, i) => `${i}s`);
+      const data = chunkResults.map(r => r.cry_ratio * 100);
+      return {
+        labels: labels.length > 10 ? labels.filter((_, i) => i % 2 === 0) : labels,
+        datasets: [{
+          data,
+          color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`,
+          strokeWidth: 2,
+        }],
+      };
+    }
+
+    // Smooth the frame probabilities for wave-like curves
+    const scaledProbs = chunk.frame_probabilities.map(p => p * 100);
+    const smoothedProbs = smoothData(scaledProbs, 7); // Smooth with window size 7
+
+    // Downsample for mobile (limit to ~40-50 points to avoid stretching)
+    const maxPoints = 45;
+    const step = Math.ceil(smoothedProbs.length / maxPoints);
+
+    const dataPoints = smoothedProbs.filter((_, i) => i % step === 0);
+    const labels = chunk.frame_times_sec
+      .filter((_, i) => i % step === 0)
+      .map(t => `${t.toFixed(1)}s`);
+
+    // Create threshold line (constant value)
+    const thresholdValue = (chunk.threshold || 0.5) * 100;
+    const thresholdData = new Array(dataPoints.length).fill(thresholdValue);
 
     return {
-      labels: labels.length > 10 ? labels.filter((_, i) => i % 2 === 0) : labels,
-      datasets: [{
-        data,
-        color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`,
-        strokeWidth: 2,
-      }],
+      labels: labels.length > 10 ? labels.filter((_, i) => i % Math.ceil(labels.length / 6) === 0) : labels,
+      datasets: [
+        {
+          data: dataPoints,
+          color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`,
+          strokeWidth: 2.5,
+          withDots: false, // Remove dots for smoother look
+        },
+        {
+          data: thresholdData,
+          color: (opacity = 1) => `rgba(255, 107, 107, ${opacity})`,
+          strokeWidth: 1.5,
+          withDots: false,
+          strokeDasharray: [5, 5],
+        }
+      ],
+    };
+  };
+
+  const getReplayGraphData = () => {
+    if (chunkResults.length === 0) {
+      return {
+        labels: ['0s'],
+        datasets: [{ data: [0] }],
+      };
+    }
+
+    // For replay mode with frame-based data, show only frames up to current playback time
+    const chunk = chunkResults[0];
+    if (!chunk.frame_times_sec || !chunk.frame_probabilities || chunk.frame_probabilities.length === 0) {
+      // Fallback: show chunk-based data
+      return getGraphData();
+    }
+
+    const currentTimeSeconds = currentTime / 1000;
+
+    // Filter frames up to current playback time
+    const visibleIndices = chunk.frame_times_sec
+      .map((time, idx) => ({ time, idx }))
+      .filter(({ time }) => time <= currentTimeSeconds)
+      .map(({ idx }) => idx);
+
+    if (visibleIndices.length === 0) {
+      return {
+        labels: ['0s'],
+        datasets: [{ data: [0] }],
+      };
+    }
+
+    // Get the visible frame data and smooth it
+    const visibleProbs = visibleIndices.map(idx => chunk.frame_probabilities[idx] * 100);
+    const smoothedProbs = smoothData(visibleProbs, 7); // Smooth for wave-like curves
+
+    // Downsample visible points for mobile (limit to ~40-50 points)
+    const maxPoints = 45;
+    const step = Math.ceil(smoothedProbs.length / maxPoints);
+
+    const dataPoints = smoothedProbs.filter((_, i) => i % step === 0);
+
+    const labels = visibleIndices
+      .filter((_, i) => i % step === 0)
+      .map(idx => `${chunk.frame_times_sec[idx].toFixed(1)}s`);
+
+    // Create threshold line
+    const thresholdValue = (chunk.threshold || 0.5) * 100;
+    const thresholdData = new Array(dataPoints.length).fill(thresholdValue);
+
+    return {
+      labels: labels.length > 10 ? labels.filter((_, i) => i % Math.ceil(labels.length / 6) === 0) : labels,
+      datasets: [
+        {
+          data: dataPoints,
+          color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`,
+          strokeWidth: 2.5,
+          withDots: false,
+        },
+        {
+          data: thresholdData,
+          color: (opacity = 1) => `rgba(255, 107, 107, ${opacity})`,
+          strokeWidth: 1.5,
+          withDots: false,
+          strokeDasharray: [5, 5],
+        }
+      ],
     };
   };
 
@@ -361,12 +504,20 @@ export default function MonitoringScreen() {
             {/* Results Graph */}
             {chunkResults.length > 0 && (
               <GlassCard style={styles.graphCard}>
-                <Text style={styles.sectionTitle}>Cry Detection Over Time</Text>
+                <View style={styles.graphHeaderContainer}>
+                  <Text style={styles.sectionTitle}>Cry Detection Over Time</Text>
+                  {isReplaying && (
+                    <View style={styles.replayIndicator}>
+                      <Animated.View style={[styles.replayPulse, waveStyle]} />
+                      <Text style={styles.replayText}>● LIVE</Text>
+                    </View>
+                  )}
+                </View>
 
                 <LineChart
-                  data={getGraphData()}
-                  width={SCREEN_WIDTH - 64}
-                  height={220}
+                  data={isReplaying ? getReplayGraphData() : getGraphData()}
+                  width={SCREEN_WIDTH - 48}
+                  height={240}
                   chartConfig={{
                     backgroundColor: 'transparent',
                     backgroundGradientFrom: 'rgba(0, 0, 0, 0.1)',
@@ -376,19 +527,40 @@ export default function MonitoringScreen() {
                     labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
                     style: { borderRadius: 16 },
                     propsForDots: {
-                      r: '4',
-                      strokeWidth: '2',
-                      stroke: theme.colors.primary,
+                      r: '0',
+                      strokeWidth: '0',
+                    },
+                    propsForBackgroundLines: {
+                      strokeDasharray: '0',
+                      stroke: 'rgba(255, 255, 255, 0.1)',
+                      strokeWidth: 0.5,
                     },
                   }}
                   bezier
                   style={styles.chart}
                 />
 
+                {/* Legend */}
+                <View style={styles.legendContainer}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendColor, { backgroundColor: theme.colors.primary }]} />
+                    <Text style={styles.legendText}>Cry Probability</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendColor, { backgroundColor: '#ff6b6b', borderWidth: 1, borderStyle: 'dashed', borderColor: '#ff6b6b' }]} />
+                    <Text style={styles.legendText}>Threshold</Text>
+                  </View>
+                </View>
+
                 <View style={styles.currentIndicator}>
-                  <View style={styles.indicatorDot} />
+                  {isReplaying && (
+                    <Animated.View style={[styles.indicatorDot, waveStyle]} />
+                  )}
+                  {!isReplaying && (
+                    <View style={styles.indicatorDot} />
+                  )}
                   <Text style={styles.indicatorText}>
-                    Current: Chunk {currentChunkIndex + 1}
+                    {isReplaying ? `Playing: ${formatTime(currentTime)} / ${formatTime(duration)}` : `Current: Chunk ${currentChunkIndex + 1}`}
                   </Text>
                 </View>
               </GlassCard>
@@ -419,6 +591,13 @@ export default function MonitoringScreen() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Cry Segments:</Text>
                   <Text style={styles.detailValue}>{currentChunk.segments.length}</Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Threshold:</Text>
+                  <Text style={styles.detailValue}>
+                    {((currentChunk.threshold || 0.5) * 100).toFixed(1)}%
+                  </Text>
                 </View>
 
                 {currentChunk.segments.length > 0 && (
@@ -683,6 +862,58 @@ const styles = StyleSheet.create({
   indicatorText: {
     color: theme.colors.text,
     fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  graphHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  replayIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: 'rgba(1, 204, 102, 0.2)',
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  replayPulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.primary,
+  },
+  replayText: {
+    color: theme.colors.primary,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.bold,
+    letterSpacing: 1,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: theme.spacing.lg,
+    marginTop: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  legendText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
     fontWeight: theme.fontWeight.medium,
   },
   detailsCard: {

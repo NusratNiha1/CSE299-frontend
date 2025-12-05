@@ -22,8 +22,8 @@ export interface CryDetectionResponse {
 }
 
 /**
- * Sends an audio chunk to the cry detection backend
- * @param audioBlob - The audio file blob (4 second chunk)
+ * Sends an audio/video file to the cry detection backend
+ * @param audioBlob - The audio file blob, ArrayBuffer, or React Native file object with uri
  * @returns Promise with cry detection results
  */
 export async function detectCry(audioBlob: Blob | ArrayBuffer | { uri: string; name?: string; type?: string }): Promise<CryDetectionResponse> {
@@ -39,15 +39,28 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer | { uri: string; n
             name: fileObj.name || 'audio.wav',
             type: inferredType,
         } as any);
-        console.log('Detected RN file upload:', { uri: fileObj.uri, name: fileObj.name, type: inferredType });
+        console.log('📤 Sending React Native file:', { 
+            uri: fileObj.uri, 
+            name: fileObj.name || 'audio.wav', 
+            type: inferredType 
+        });
+    } else if (audioBlob instanceof ArrayBuffer) {
+        // For ArrayBuffer, we cannot create Blob in React Native
+        // Instead, try to append it directly (this may fail on React Native)
+        console.warn('⚠️ ArrayBuffer detected - this may not work on React Native. Consider using file URI instead.');
+        try {
+            const blob = new Blob([audioBlob], { type: 'audio/wav' });
+            formData.append('audio', blob as any, 'audio.wav');
+            console.log('Blob created from ArrayBuffer:', { size: blob.size, type: blob.type });
+        } catch (e) {
+            console.error('Failed to create Blob from ArrayBuffer:', e);
+            throw new Error('Cannot create Blob from ArrayBuffer on this platform. Please use file URI instead.');
+        }
     } else {
-        // Convert ArrayBuffer to Blob if needed
-        const blob = audioBlob instanceof ArrayBuffer
-            ? new Blob([audioBlob], { type: 'audio/wav' })
-            : audioBlob as Blob;
+        // It's already a Blob
+        const blob = audioBlob as Blob;
         formData.append('audio', blob as any, 'audio.wav');
-
-        console.log('Blob Info:', {
+        console.log('📤 Sending Blob:', {
             size: blob.size,
             type: blob.type,
             isBlob: blob instanceof Blob
@@ -63,7 +76,6 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer | { uri: string; n
     };
     console.log('Headers:', headers);
     console.log('Sending FormData to:', CRY_DETECTION_API_URL);
-    console.log('Body: FormData with audio file "audio.wav"');
     console.log('------------------------------');
 
     // React Native specific: sometimes fetch needs help with FormData
