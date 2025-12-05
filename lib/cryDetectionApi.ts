@@ -1,5 +1,3 @@
-// API client for cry detection backend
-// Use local proxy to bypass CORS on web, or direct ngrok URL for native
 export const CRY_DETECTION_API_URL =
     typeof window !== 'undefined' && window.location?.hostname === 'localhost'
         ? 'http://localhost:3000/cry-detection/predict'  // Use proxy for web
@@ -67,16 +65,13 @@ export async function detectCry(audioBlob: Blob | ArrayBuffer | { uri: string; n
         });
     }
 
-    console.log('--- API Request Debug Info ---');
-    console.log('URL:', CRY_DETECTION_API_URL);
+
 
     const headers: any = {
         'Accept': 'application/json',
         'ngrok-skip-browser-warning': 'true',
     };
-    console.log('Headers:', headers);
-    console.log('Sending FormData to:', CRY_DETECTION_API_URL);
-    console.log('------------------------------');
+
 
     // React Native specific: sometimes fetch needs help with FormData
     const response = await fetch(CRY_DETECTION_API_URL, {
