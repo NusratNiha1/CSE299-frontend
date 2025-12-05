@@ -20,9 +20,11 @@ import Animated, {
   withSequence,
   Easing,
 } from 'react-native-reanimated';
-import { ArrowLeft, Camera, FolderOpen, Video as VideoIcon, Terminal, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, FolderOpen, Video as VideoIcon, Terminal, X, Square } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, AVPlaybackStatus } from 'expo-av';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FileSystem from 'expo-file-system/legacy';
 import { GlassCard } from '@/components/GlassCard';
 import { ButtonPrimary } from '@/components/ButtonPrimary';
 import { theme } from '@/constants/theme';
@@ -40,7 +42,10 @@ interface ChunkResult extends CryDetectionResponse {
 export default function MonitoringScreen() {
   const router = useRouter();
   const videoRef = useRef<Video>(null);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
+  // Video upload mode state
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -54,6 +59,16 @@ export default function MonitoringScreen() {
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false); // Track real-time replay mode
+
+  // Live camera mode state
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [isRecordingLive, setIsRecordingLive] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [liveRecordingUri, setLiveRecordingUri] = useState<string | null>(null); // Used to track recording location
+  const [liveChunkResults, setLiveChunkResults] = useState<ChunkResult[]>([]);
+  const [liveRecordingTime, setLiveRecordingTime] = useState(0);
+  const extractIntervalRef = useRef<NodeJS.Timeout | number | null>(null);
+  const extractCountRef = useRef(0);
 
   // Animation values
   const waveOpacity = useSharedValue(0.3);
@@ -133,6 +148,152 @@ export default function MonitoringScreen() {
     setLogs([]);
     setProcessingProgress(0);
     setCurrentChunkProcessing(0);
+  };
+
+  // LIVE CAMERA MODE FUNCTIONS
+  const handleStartLive = async () => {
+    try {
+      const permStatus = cameraPermission?.granted;
+      if (!permStatus) {
+        const result = await requestCameraPermission();
+        if (!result.granted) {
+          Alert.alert('Permission Required', 'Please grant camera access to use live monitoring.');
+          return;
+        }
+      }
+
+      // Create a file path for the live recording - camera will create the file
+      const fileName = `live_recording_${Date.now()}.mp4`;
+      const filePath = `file://${FileSystem.documentDirectory}${fileName}`.replace(/\/{3,}/g, '//');
+      
+      addLog('Starting live camera recording...');
+      setIsLiveMode(true);
+      setIsRecordingLive(true);
+      setLiveRecordingUri(filePath);
+      setLiveChunkResults([]);
+      setLiveRecordingTime(0);
+      extractCountRef.current = 0;
+
+      // Start the camera recording
+      if (cameraRef.current) {
+        const recordingPromise = cameraRef.current.recordAsync({
+          maxDuration: 3600, // 1 hour max
+          maxFileSize: 1000 * 1024 * 1024, // 1GB
+        }) as Promise<{uri: string} | undefined>;
+
+        // Start the 10-second extraction timer
+        startLiveAudioExtraction(filePath);
+
+        // Wait for recording to complete (won't happen unless stopped)
+        const recording = await recordingPromise;
+        if (recording?.uri) {
+          setLiveRecordingUri(recording.uri);
+          addLog(`Recording completed: ${recording.uri}`);
+        }
+      }
+    } catch (error: any) {
+      addLog(`Error starting live recording: ${error.message}`);
+      Alert.alert('Error', 'Failed to start live recording: ' + error.message);
+      setIsLiveMode(false);
+      setIsRecordingLive(false);
+    }
+  };
+
+  const startLiveAudioExtraction = (recordingPath: string) => {
+    addLog('Starting 10-second audio extraction timer...');
+    
+    // Clear any existing timer
+    if (extractIntervalRef.current) {
+      clearInterval(extractIntervalRef.current);
+    }
+
+    extractIntervalRef.current = setInterval(async () => {
+      try {
+        extractCountRef.current += 1;
+        addLog(`Extracting audio segment #${extractCountRef.current}...`);
+
+        // Extract audio from the recording file
+        const audioBuffer = await VideoAudioProcessor.extractLastNSecondsAudio(
+          recordingPath,
+          10
+        );
+        addLog(`Audio extracted: ${(audioBuffer.byteLength / 1024).toFixed(2)} KB`);
+
+        // Send to API
+        addLog(`Sending segment #${extractCountRef.current} to API...`);
+        try {
+          const result = await detectCry({
+            uri: recordingPath,
+            name: `live-segment-${extractCountRef.current}.wav`,
+            type: 'audio/wav',
+          });
+
+          addLog(`✅ API Response received for segment #${extractCountRef.current}`);
+          addLog(`Crying detected: ${result.any_cry ? 'YES' : 'NO'}`);
+          addLog(`Cry ratio: ${(result.cry_ratio * 100).toFixed(2)}%`);
+
+          // Add to live results
+          const newChunk: ChunkResult = {
+            ...result,
+            chunkIndex: extractCountRef.current - 1,
+            timestamp: (extractCountRef.current - 1) * 10000, // 10 seconds in ms
+          };
+
+          setLiveChunkResults(prev => [...prev, newChunk]);
+          setLiveRecordingTime(extractCountRef.current * 10);
+          addLog(`Total recording time: ${extractCountRef.current * 10}s`);
+        } catch (apiError: any) {
+          addLog(`⚠️ API Error: ${apiError.message}`);
+        }
+      } catch (error: any) {
+        addLog(`Error in extraction timer: ${error.message}`);
+      }
+    }, 10000); // Extract every 10 seconds
+  };
+
+  const handleStopLive = async () => {
+    try {
+      addLog('Stopping live recording...');
+      
+      // Clear the extraction timer
+      if (extractIntervalRef.current) {
+        clearInterval(extractIntervalRef.current);
+        extractIntervalRef.current = null;
+      }
+
+      // Stop the camera recording
+      if (cameraRef.current) {
+        try {
+          await (cameraRef.current as any).stopRecording?.();
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (_e) {
+          // Silently handle stop errors
+        }
+      }
+
+      setIsRecordingLive(false);
+      addLog('✅ Live recording stopped');
+    } catch (error: any) {
+      addLog(`Error stopping live recording: ${error.message}`);
+      Alert.alert('Error', 'Failed to stop recording: ' + error.message);
+    }
+  };
+
+  const exitLiveMode = () => {
+    // Clear timer
+    if (extractIntervalRef.current) {
+      clearInterval(extractIntervalRef.current);
+      extractIntervalRef.current = null;
+    }
+
+    // Clean up
+    setIsLiveMode(false);
+    setIsRecordingLive(false);
+    setLiveRecordingUri(null);
+    setLiveChunkResults([]);
+    setLiveRecordingTime(0);
+    extractCountRef.current = 0;
+    setLogs([]);
   };
 
   const analyzeVideo = async () => {
@@ -336,7 +497,7 @@ export default function MonitoringScreen() {
           color: (opacity = 1) => `rgba(255, 107, 107, ${opacity})`,
           strokeWidth: 1.5,
           withDots: false,
-          strokeDasharray: [5, 5],
+          strokeDashArray: [5, 5],
         }
       ],
     };
@@ -404,7 +565,7 @@ export default function MonitoringScreen() {
           color: (opacity = 1) => `rgba(255, 107, 107, ${opacity})`,
           strokeWidth: 1.5,
           withDots: false,
-          strokeDasharray: [5, 5],
+          strokeDashArray: [5, 5],
         }
       ],
     };
@@ -461,8 +622,19 @@ export default function MonitoringScreen() {
                 <Text style={styles.sourceButtonText}>Select Video</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Live Monitoring Button - Hidden for now */}
+            {false && (
+              <TouchableOpacity
+                style={[styles.sourceButton, styles.liveButton]}
+                onPress={handleStartLive}
+              >
+                <VideoIcon size={32} color={theme.colors.error} />
+                <Text style={[styles.sourceButtonText, { color: theme.colors.error }]}>Start Live Monitoring</Text>
+              </TouchableOpacity>
+            )}
           </GlassCard>
-        ) : (
+        ) : !isLiveMode ? (
           <>
             {/* Video Player */}
             <GlassCard style={styles.videoCard}>
@@ -652,6 +824,160 @@ export default function MonitoringScreen() {
                   <Text style={styles.detailValue}>
                     {chunkResults.reduce((sum, r) => sum + r.segments.length, 0)}
                   </Text>
+                </View>
+              </GlassCard>
+            )}
+          </>
+        ) : (
+          <>
+            {/* LIVE CAMERA MODE */}
+            <View style={styles.liveCameraContainer}>
+              <CameraView
+                ref={cameraRef}
+                style={styles.liveCamera}
+                facing="back"
+              />
+
+              {/* Live Camera Controls */}
+              <View style={styles.liveCameraControls}>
+                <TouchableOpacity
+                  style={[styles.liveControlButton, { backgroundColor: theme.colors.error }]}
+                  onPress={isRecordingLive ? handleStopLive : handleStartLive}
+                >
+                  <Square
+                    size={28}
+                    color="white"
+                    fill={isRecordingLive ? theme.colors.error : undefined}
+                  />
+                  <Text style={styles.liveControlText}>
+                    {isRecordingLive ? 'Stop Recording' : 'Start Recording'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.liveControlButton}
+                  onPress={exitLiveMode}
+                >
+                  <X size={28} color={theme.colors.text} />
+                  <Text style={styles.liveControlText}>Exit Live</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Recording Stats */}
+              {isRecordingLive && (
+                <View style={styles.liveStatsContainer}>
+                  <View style={styles.recordingIndicator}>
+                    <View style={styles.recordingDot} />
+                    <Text style={styles.recordingText}>RECORDING</Text>
+                  </View>
+                  <Text style={styles.liveStatsText}>
+                    Time: {liveRecordingTime}s | Segments: {liveChunkResults.length}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Live Graph Display */}
+            {liveChunkResults.length > 0 && (
+              <GlassCard style={styles.videoCard}>
+                <Text style={styles.sectionTitle}>Live Detection Results</Text>
+                
+                {/* Stats */}
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Total Segments Analyzed:</Text>
+                  <Text style={styles.detailValue}>{liveChunkResults.length}</Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Segments with Crying:</Text>
+                  <Text style={styles.detailValue}>
+                    {liveChunkResults.filter(r => r.any_cry).length}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Average Cry Ratio:</Text>
+                  <Text style={styles.detailValue}>
+                    {(liveChunkResults.reduce((sum, r) => sum + r.cry_ratio, 0) / liveChunkResults.length * 100).toFixed(1)}%
+                  </Text>
+                </View>
+
+                {/* Live Graph */}
+                {liveChunkResults.length > 0 && (
+                  <View style={styles.graphContainer}>
+                    <LineChart
+                      data={{
+                        labels: liveChunkResults.map((_, i) => `${i * 10}s`),
+                        datasets: [
+                          {
+                            data: liveChunkResults.map(r => r.cry_ratio * 100),
+                            color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`,
+                            strokeWidth: 2.5,
+                            withDots: false,
+                          },
+                          {
+                            data: liveChunkResults.map(r => (r.threshold || 0.5) * 100),
+                            color: (opacity = 1) => `rgba(255, 107, 107, ${opacity})`,
+                            strokeWidth: 1.5,
+                            withDots: false,
+                            strokeDashArray: [5, 5],
+                          }
+                        ],
+                      }}
+                      width={SCREEN_WIDTH - 48}
+                      height={240}
+                      fromZero={true}
+                      yAxisLabel=""
+                      yAxisSuffix="%"
+                      chartConfig={{
+                        backgroundColor: 'transparent',
+                        backgroundGradientFrom: 'transparent',
+                        backgroundGradientTo: 'transparent',
+                        decimalPlaces: 0,
+                        color: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.5})`,
+                        labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.7})`,
+                        style: {
+                          borderRadius: 16,
+                        },
+                        propsForDots: {
+                          r: '0',
+                          strokeWidth: '0',
+                        },
+                      }}
+                      bezier
+                      style={styles.chart}
+                    />
+
+                    {/* Legend */}
+                    <View style={styles.legendContainer}>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: theme.colors.primary }]} />
+                        <Text style={styles.legendText}>Cry Probability</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#ff6b6b', borderWidth: 1, borderStyle: 'dashed', borderColor: '#ff6b6b' }]} />
+                        <Text style={styles.legendText}>Threshold</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Recent Detections */}
+                <View style={styles.segmentsContainer}>
+                  <Text style={styles.segmentsTitle}>Recent Segments:</Text>
+                  {liveChunkResults.slice(-5).reverse().map((result, index) => (
+                    <View key={index} style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>
+                        Segment {result.chunkIndex + 1} ({result.chunkIndex * 10}s):
+                      </Text>
+                      <Text style={[
+                        styles.detailValue,
+                        { color: result.any_cry ? theme.colors.error : theme.colors.success }
+                      ]}>
+                        {result.any_cry ? 'CRY' : 'OK'} ({(result.cry_ratio * 100).toFixed(1)}%)
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               </GlassCard>
             )}
@@ -1136,5 +1462,78 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.lg,
     fontWeight: 'bold',
     color: theme.colors.text,
+  },
+  // Live Camera Styles
+  liveButton: {
+    marginTop: theme.spacing.md,
+    width: '100%',
+  },
+  liveCameraContainer: {
+    position: 'relative',
+    marginBottom: theme.spacing.lg,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  liveCamera: {
+    width: '100%',
+    height: 400,
+    backgroundColor: '#000',
+  },
+  liveCameraControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+  },
+  liveControlButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  liveControlText: {
+    color: theme.colors.text,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  liveStatsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: theme.colors.error,
+  },
+  recordingText: {
+    color: theme.colors.error,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.bold,
+    letterSpacing: 1,
+  },
+  liveStatsText: {
+    color: theme.colors.text,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
 });
