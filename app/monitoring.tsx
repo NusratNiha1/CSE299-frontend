@@ -15,21 +15,18 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue,
-  useAnimatedStyle,
   withRepeat,
   withTiming,
   withSequence,
   Easing,
 } from 'react-native-reanimated';
-import { ArrowLeft, Camera, FolderOpen, Video as VideoIcon, AlertCircle, Terminal, X } from 'lucide-react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import { ArrowLeft, Camera, FolderOpen, Video as VideoIcon, Terminal, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, AVPlaybackStatus } from 'expo-av';
 import { GlassCard } from '@/components/GlassCard';
 import { ButtonPrimary } from '@/components/ButtonPrimary';
 import { theme } from '@/constants/theme';
-import { detectCry, CryDetectionResponse, CRY_DETECTION_API_URL } from '@/lib/cryDetectionApi';
+import { detectCry, CryDetectionResponse } from '@/lib/cryDetectionApi';
 import { VideoAudioProcessor } from '@/lib/videoAudioProcessor';
 import { LineChart } from 'react-native-chart-kit';
 
@@ -39,111 +36,6 @@ interface ChunkResult extends CryDetectionResponse {
   chunkIndex: number;
   timestamp: number;
 }
-
-const CryAnalysisGraph = ({ result }: { result: CryDetectionResponse }) => {
-  if (!result || !result.frame_probabilities || result.frame_probabilities.length === 0) {
-    return null;
-  }
-
-  // Downsample if too many points (limit to ~50 points for performance)
-  const maxPoints = 50;
-  const step = Math.ceil(result.frame_probabilities.length / maxPoints);
-
-  const dataPoints = result.frame_probabilities.filter((_, i) => i % step === 0);
-  const labels = result.frame_times_sec
-    ? result.frame_times_sec.filter((_, i) => i % step === 0).map(t => t.toFixed(1))
-    : dataPoints.map((_, i) => i.toString());
-
-  // Ensure we have at least some data
-  if (dataPoints.length === 0) return null;
-
-  return (
-    <View style={styles.graphContainer}>
-      <Text style={styles.graphTitle}>Cry Probability Analysis</Text>
-
-      <LineChart
-        data={{
-          labels: labels.length > 10 ? labels.filter((_, i) => i % Math.ceil(labels.length / 6) === 0) : labels,
-          datasets: [
-            {
-              data: dataPoints,
-              color: (opacity = 1) => `rgba(1, 204, 102, ${opacity})`, // Green line
-              strokeWidth: 2
-            },
-            {
-              data: new Array(dataPoints.length).fill(result.threshold),
-              color: () => `rgba(255, 0, 0, 0.5)`, // Red threshold line
-              strokeWidth: 1,
-              withDots: false,
-            }
-          ],
-          legend: ["Probability", "Threshold"]
-        }}
-        width={SCREEN_WIDTH - 80} // Adjust for padding
-        height={220}
-        yAxisLabel=""
-        yAxisSuffix=""
-        yAxisInterval={1}
-        chartConfig={{
-          backgroundColor: "transparent",
-          backgroundGradientFrom: "transparent",
-          backgroundGradientTo: "transparent",
-          decimalPlaces: 2,
-          color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-          labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-          style: {
-            borderRadius: 16
-          },
-          propsForDots: {
-            r: "3",
-            strokeWidth: "1",
-            stroke: "#ffa726"
-          }
-        }}
-        bezier
-        style={{
-          marginVertical: 8,
-          borderRadius: 16
-        }}
-      />
-
-      {/* Segments Visualization */}
-      {result.segments && result.segments.length > 0 && (
-        <View style={styles.segmentsList}>
-          <Text style={styles.segmentsHeader}>Detected Cry Segments:</Text>
-          {result.segments.map((seg, idx) => (
-            <View key={idx} style={styles.segmentItem}>
-              <View style={styles.segmentTime}>
-                <Text style={styles.segmentTimeText}>
-                  {seg.start.toFixed(2)}s - {seg.end.toFixed(2)}s
-                </Text>
-                <Text style={styles.segmentDuration}>
-                  ({seg.duration.toFixed(2)}s)
-                </Text>
-              </View>
-              <View style={styles.segmentBarContainer}>
-                <View style={[styles.segmentBar, { width: `${Math.min(100, seg.duration * 20)}%` }]} />
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Cry Ratio</Text>
-          <Text style={styles.statValue}>{(result.cry_ratio * 100).toFixed(1)}%</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Any Cry?</Text>
-          <Text style={[styles.statValue, { color: result.any_cry ? theme.colors.error : theme.colors.success }]}>
-            {result.any_cry ? 'YES' : 'NO'}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-};
 
 export default function MonitoringScreen() {
   const router = useRouter();
@@ -161,21 +53,8 @@ export default function MonitoringScreen() {
   const [currentChunkProcessing, setCurrentChunkProcessing] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
-  // Audio test states
-  const [audioUri, setAudioUri] = useState<string | null>(null);
-  const [audioName, setAudioName] = useState<string | null>(null);
-  const [audioResult, setAudioResult] = useState<CryDetectionResponse | null>(null);
-  const [audioUploading, setAudioUploading] = useState(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
-  const [audioStatus, setAudioStatus] = useState<string | null>(null);
-  const [debugRequest, setDebugRequest] = useState<any | null>(null);
-  const [debugResponse, setDebugResponse] = useState<any | null>(null);
-
-  // TEMP: Simple mode to upload raw audio only
-  const simpleMode = true;
 
   // Animation values
-  const pulseScale = useSharedValue(1);
   const waveOpacity = useSharedValue(0.3);
 
   useEffect(() => {
@@ -188,314 +67,14 @@ export default function MonitoringScreen() {
       false
     );
   }, [waveOpacity]);
-  const waveStyle = useAnimatedStyle(() => ({ opacity: waveOpacity.value }));
+  const waveStyle = { opacity: waveOpacity };
   const addLog = (message: string) => {
     console.log(message);
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev]);
   };
 
   // Pick an audio file for direct cry detection test
-  const pickAudio = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'audio/*' });
-      console.log('DocumentPicker result:', result);
 
-      // Handle the new DocumentPicker API structure
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        setAudioUri(file.uri);
-        setAudioName(file.name || 'audio');
-        setAudioResult(null);
-        setAudioError(null);
-        setAudioStatus('Audio selected. Ready to send.');
-        addLog('Audio selected: ' + file.uri);
-        // Auto-send after selection for quick testing; pass uri/name directly
-        setTimeout(() => sendAudio(file.uri, file.name), 200);
-      } else {
-        addLog('Audio selection canceled or no file selected');
-      }
-    } catch (e: any) {
-      console.error('Error picking audio:', e);
-      setAudioError(e.message);
-      addLog('Error picking audio: ' + e.message);
-    }
-  };
-
-  // Send selected audio file to cry detection API
-  const sendAudio = async (fileUri?: string, fileName?: string) => {
-    const uriToSend = fileUri || audioUri;
-    const nameToUse = fileName || audioName;
-    if (!uriToSend) return;
-    setAudioUploading(true);
-    setAudioError(null);
-    setAudioResult(null);
-    setAudioStatus('Preparing audio...');
-    try {
-      addLog('Starting audio upload...');
-      // Build a React Native file object using URI (no blob conversion)
-      let file: any = {
-        uri: uriToSend,
-        name: (nameToUse || 'audio.wav'),
-        type: nameToUse ? (nameToUse.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav') : 'audio/wav',
-      };
-
-      // On Android content URIs (content://...), copy to cache and use file:// URI
-      if (file.uri.startsWith('content://')) {
-        setAudioStatus('Copying to cache for upload...');
-        addLog('Copying content URI to cache: ' + file.uri);
-        try {
-          const cacheDir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '/';
-          const dest = cacheDir + (file.name || `audio-${Date.now()}.wav`);
-          await FileSystem.copyAsync({ from: file.uri, to: dest });
-          file.uri = dest;
-          addLog('Cached copied to: ' + dest);
-        } catch (copyErr: any) {
-          addLog('Failed to copy content URI: ' + copyErr.message);
-        }
-      }
-
-      setAudioStatus('Uploading to API...');
-
-      // Build debug info
-      const fileInfo = await (async () => {
-        try {
-          const info = await FileSystem.getInfoAsync(file.uri, { size: true } as any);
-          return { size: (info as any).size };
-        } catch (e) {
-          return { size: undefined };
-        }
-      })();
-
-      const requestSummary = {
-        url: CRY_DETECTION_API_URL,
-        method: 'POST',
-        headers: { Accept: 'application/json', 'ngrok-skip-browser-warning': 'true' },
-        payload: [{ name: 'audio', filename: file.name, type: file.type, uri: file.uri, size: fileInfo.size }],
-      };
-      setDebugRequest(requestSummary);
-
-      // Send request directly here so we capture status for debug
-      const formData = new FormData();
-      formData.append('audio', { uri: file.uri, name: file.name, type: file.type } as any);
-      const resp = await fetch(CRY_DETECTION_API_URL, { method: 'POST', body: formData, headers: requestSummary.headers as any });
-      const respText = await resp.text();
-      let respBody;
-      try { respBody = JSON.parse(respText); } catch { respBody = respText; }
-      setDebugResponse({ status: resp.status, ok: resp.ok, body: respBody });
-
-      // Parse body into audioResult
-      if (resp.ok && typeof respBody === 'object') {
-        setAudioResult(respBody);
-      } else {
-        // Keep audioResult null if server returns non-JSON error
-        setAudioResult(null);
-        if (!resp.ok) {
-          setAudioError(`Server responded ${resp.status}: ${respText}`);
-        }
-      }
-      // Also call the helper detectCry for consistency/logging if needed (optional)
-      try {
-        await detectCry(file);
-      } catch {
-        // ignore - we already processed the response above
-      }
-      addLog('Audio upload complete.');
-      setAudioStatus('Completed. Response received.');
-    } catch (e: any) {
-      addLog('Audio upload failed: ' + e.message);
-      setAudioError(e.message);
-      setAudioStatus('Failed to send audio.');
-    } finally {
-      setAudioUploading(false);
-    }
-  };
-
-  // Early return to show audio/video upload UI for testing
-  if (simpleMode) {
-    return (
-      <LinearGradient colors={[theme.colors.background, theme.colors.secondary]} style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ArrowLeft size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Cry Detection Test</Text>
-          <View style={{ width: 32 }} />
-        </View>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Audio Upload Section */}
-          <GlassCard style={styles.selectionCard}>
-            <Text style={styles.sectionTitle}>Option 1: Upload Audio File</Text>
-            <Text style={styles.selectionDescription}>Select an audio file (WAV/MP3) and send directly to the cry detection API.</Text>
-            {!audioUri && <ButtonPrimary title="Select Audio File" onPress={pickAudio} />}
-            {audioUri && (
-              <>
-                <Text style={styles.selectionDescription}>Selected: {audioName}</Text>
-                {audioStatus && <Text style={styles.statusText}>{audioStatus}</Text>}
-                {audioUploading && <ActivityIndicator size="small" color={theme.colors.primary} />}
-                <ButtonPrimary
-                  title={audioUploading ? 'Sending...' : 'Send Audio'}
-                  onPress={() => sendAudio()}
-                  loading={audioUploading}
-                  style={{ marginTop: 12 }}
-                />
-                <TouchableOpacity onPress={() => { setAudioUri(null); setAudioResult(null); setAudioError(null); setAudioStatus(null); }} style={styles.resetButton}>
-                  <Text style={styles.resetButtonText}>Clear Audio</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            {audioError && <Text style={{ color: theme.colors.error, marginTop: 8 }}>{audioError}</Text>}
-            {audioResult && (
-              <CryAnalysisGraph result={audioResult} />
-            )}
-          </GlassCard>
-
-          {/* Video Upload Section */}
-          <GlassCard style={styles.selectionCard}>
-            <Text style={styles.sectionTitle}>Option 2: Upload Video File</Text>
-            <Text style={styles.selectionDescription}>Select a video file, extract audio as WAV, and send to the API.</Text>
-            {!videoUri && <ButtonPrimary title="Select Video File" onPress={async () => {
-              try {
-                console.log('Video selection button clicked');
-                addLog('Requesting video selection...');
-                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                console.log('Permission status:', status);
-                if (status !== 'granted') {
-                  setAudioError('Permission Required: Please grant photo library access to select a video.');
-                  addLog('Permission denied');
-                  return;
-                }
-                addLog('Permission granted, launching picker...');
-                const result = await ImagePicker.launchImageLibraryAsync({
-                  mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-                  allowsEditing: false,
-                  quality: 0.8,
-                });
-                console.log('Picker result:', result);
-                if (!result.canceled && result.assets[0]) {
-                  setVideoUri(result.assets[0].uri);
-                  setAudioResult(null);
-                  setAudioError(null);
-                  setAudioStatus(null);
-                  addLog('Video selected: ' + result.assets[0].uri);
-                } else {
-                  addLog('Video selection canceled');
-                }
-              } catch (error: any) {
-                console.error('Error selecting video:', error);
-                setAudioError('Failed to select video: ' + error.message);
-                addLog('Error selecting video: ' + error.message);
-              }
-            }} />}
-            {videoUri && (
-              <>
-                <Video
-                  ref={videoRef}
-                  source={{ uri: videoUri }}
-                  style={styles.videoPreview}
-                  useNativeControls
-                  resizeMode={"contain" as any}
-                  onPlaybackStatusUpdate={(status: any) => {
-                    if (status.isLoaded && status.durationMillis) {
-                      setDuration(status.durationMillis);
-                    }
-                  }}
-                />
-                {duration > 0 && (
-                  <Text style={styles.selectionDescription}>
-                    Duration: {Math.floor(duration / 1000 / 60)}:{String(Math.floor((duration / 1000) % 60)).padStart(2, '0')}
-                  </Text>
-                )}
-                {audioStatus && <Text style={styles.statusText}>{audioStatus}</Text>}
-                {audioUploading && <ActivityIndicator size="small" color={theme.colors.primary} />}
-                <ButtonPrimary
-                  title={audioUploading ? 'Processing...' : 'Extract Audio & Send'}
-                  onPress={async () => {
-                    if (!videoUri) return;
-                    setAudioUploading(true);
-                    setAudioError(null);
-                    setAudioResult(null);
-                    setAudioStatus('Extracting audio from video...');
-                    try {
-                      addLog('Starting audio extraction from video...');
-                      const audioBuffer = await VideoAudioProcessor.extractFullAudio(videoUri);
-                      addLog(`Audio extracted: ${audioBuffer.byteLength} bytes`);
-
-                      setAudioStatus('Preparing audio file...');
-                      // Convert ArrayBuffer to base64 for React Native
-                      const uint8Array = new Uint8Array(audioBuffer);
-                      let binary = '';
-                      for (let i = 0; i < uint8Array.byteLength; i++) {
-                        binary += String.fromCharCode(uint8Array[i]);
-                      }
-                      const base64Audio = btoa(binary);
-
-                      // Save to cache directory
-                      const FileSystem = require('expo-file-system/legacy');
-                      const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
-                      const audioFilePath = `${cacheDir}extracted-audio-${Date.now()}.wav`;
-                      await FileSystem.writeAsStringAsync(audioFilePath, base64Audio, {
-                        encoding: FileSystem.EncodingType.Base64
-                      });
-                      addLog(`Audio saved to: ${audioFilePath}`);
-
-                      setAudioStatus('Sending to API...');
-                      // Use the file URI in FormData (React Native style)
-                      const formData = new FormData();
-                      formData.append('audio', {
-                        uri: audioFilePath,
-                        name: 'video-audio.wav',
-                        type: 'audio/wav'
-                      } as any);
-
-                      const resp = await fetch(CRY_DETECTION_API_URL, {
-                        method: 'POST',
-                        body: formData,
-                        headers: { 'Accept': 'application/json', 'ngrok-skip-browser-warning': 'true' } as any
-                      });
-                      const respText = await resp.text();
-                      let respBody;
-                      try { respBody = JSON.parse(respText); } catch { respBody = respText; }
-                      setDebugResponse({ status: resp.status, ok: resp.ok, body: respBody });
-                      if (resp.ok && typeof respBody === 'object') {
-                        setAudioResult(respBody);
-                        setAudioStatus('Completed. Response received.');
-                      } else {
-                        setAudioError(`Server responded ${resp.status}: ${respText}`);
-                        setAudioStatus('Failed.');
-                      }
-                      addLog('Video audio processing complete.');
-
-                      // Clean up the temporary file
-                      try {
-                        await FileSystem.deleteAsync(audioFilePath, { idempotent: true });
-                      } catch (e) {
-                        // Ignore cleanup errors
-                      }
-                    } catch (e: any) {
-                      addLog('Video audio extraction failed: ' + e.message);
-                      setAudioError(e.message);
-                      setAudioStatus('Failed to extract audio.');
-                    } finally {
-                      setAudioUploading(false);
-                    }
-                  }}
-                  loading={audioUploading}
-                  style={{ marginTop: 12 }}
-                />
-                <TouchableOpacity onPress={() => { setVideoUri(null); setAudioResult(null); setAudioError(null); setAudioStatus(null); }} style={styles.resetButton}>
-                  <Text style={styles.resetButtonText}>Clear Video</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            {audioError && <Text style={{ color: theme.colors.error, marginTop: 8 }}>{audioError}</Text>}
-            {audioResult && (
-              <CryAnalysisGraph result={audioResult} />
-            )}
-          </GlassCard>
-        </ScrollView>
-      </LinearGradient>
-    );
-  }
 
   const handleRecordVideo = async () => {
     try {
@@ -711,56 +290,6 @@ export default function MonitoringScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Audio Upload Test Section */}
-        <GlassCard style={styles.audioCard}>
-          <Text style={styles.sectionTitle}>Test Cry Detection (Audio)</Text>
-          {!audioUri && (
-            <ButtonPrimary title="Select Audio File" onPress={pickAudio} />
-          )}
-          {!!audioUri && (
-            <>
-              <Text style={styles.selectionDescription}>Selected: {audioName}</Text>
-              <ButtonPrimary
-                title={audioUploading ? 'Sending...' : 'Send Audio'}
-                onPress={() => sendAudio()}
-                loading={audioUploading}
-                style={{ marginTop: 12 }}
-              />
-              <TouchableOpacity
-                onPress={() => { setAudioUri(null); setAudioResult(null); setAudioError(null); }}
-                style={styles.resetButton}
-              >
-                <Text style={styles.resetButtonText}>Clear Audio</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          {audioError && <Text style={{ color: theme.colors.error, marginTop: 8 }}>{audioError}</Text>}
-          {audioResult && (
-            <>
-              <Text style={styles.rawJsonTitle}>API Response:</Text>
-              <ScrollView style={styles.rawJsonBox} nestedScrollEnabled>
-                <Text style={styles.rawJsonText}>{JSON.stringify(audioResult, null, 2)}</Text>
-              </ScrollView>
-            </>
-          )}
-          {debugRequest && (
-            <>
-              <Text style={styles.rawJsonTitle}>Raw Upload Request:</Text>
-              <ScrollView style={styles.rawJsonBox} nestedScrollEnabled>
-                <Text style={styles.rawJsonText}>{JSON.stringify(debugRequest, null, 2)}</Text>
-              </ScrollView>
-            </>
-          )}
-          {debugResponse && (
-            <>
-              <Text style={styles.rawJsonTitle}>Raw Upload Response:</Text>
-              <ScrollView style={styles.rawJsonBox} nestedScrollEnabled>
-                <Text style={styles.rawJsonText}>{JSON.stringify(debugResponse, null, 2)}</Text>
-              </ScrollView>
-            </>
-          )}
-        </GlassCard>
-
         {!videoUri ? (
           <GlassCard style={styles.selectionCard}>
             <Animated.View style={[styles.iconContainer, waveStyle]}>
@@ -1033,9 +562,6 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xxl,
     marginBottom: theme.spacing.lg,
   },
-  audioCard: {
-    marginBottom: theme.spacing.lg,
-  },
   videoPreview: {
     width: '100%',
     height: 200,
@@ -1064,12 +590,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: theme.spacing.xl,
     paddingHorizontal: theme.spacing.lg,
-  },
-  statusText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.primary,
-    textAlign: 'center',
-    marginTop: theme.spacing.xs,
   },
   buttonRow: {
     flexDirection: 'row',
